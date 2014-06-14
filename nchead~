@@ -1,0 +1,4 @@
+#!/bin/bash
+head="HEAD / HTTP/1.1\r\nHost: twitter.com\r\nAuthorization: Basic myname:passwordinbs64\r\nContent-type: application/x-www-form-urlencoded\r\nContent-length: 10\r\nConnection: Close\r\n\r\n"
+
+echo -e $head | nc -n 127.0.0.1 8080
