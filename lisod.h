@@ -58,6 +58,7 @@ typedef struct {
     char certificate_file[MAX_FILENAME_LEN];
 } cmd_line_args;
 
+cmd_line_args cla;
 /*
  * the client struct that stores the details of the client
  *

@@ -12,7 +12,6 @@
 #include "ssl_handler.h"
 #include "cgi_handler.h"
 
-cmd_line_args cla;
 char *hostname;
 
 //sslobj* ssl_client_list = NULL;
@@ -291,7 +290,7 @@ void disconnect_client(client *c, client_pool *p)
 	//only disconnect if client sent a connection close request in http
 	if (c->close_connection == DONT_CLOSE_CONN)
 		return;
-//	printf("disconnecting client %d\n", c->sock);
+	//	printf("disconnecting client %d\n", c->sock);
 	if (c->ssl_connection == 1)
 		delete_client_from_ssl_list(c->sock);
 	close(c->sock);
@@ -312,8 +311,12 @@ void handle_input(client *c, client_pool *p)
 	char* inbufptr = inbuf;
 	char method[10], uri[MAXLINE], version[12] ;
 
+
 	//	DPRINTF(DEBUG_INPUT, "Handling input from client %d\n", c->sock);
 	memset(inbuf, 0, MAX_HEADER_LEN+1);
+	memset(method, 0, 10);
+	memset(uri, 0, MAXLINE);
+	memset(version, 0, 12);
 
 	// put in call for ssl read function to transfer data to inbuf
 	if (c->ssl_connection == 1)
@@ -422,9 +425,12 @@ void handle_input(client *c, client_pool *p)
 
 
 	// PUT BRANCH FOR CGI HANDLING HERE
-	if (strstr(uri, "/cgi-/"))
+	if (strstr(uri, "/cgi-bin/"))
 	{
 		handle_cgi_request(c, uri, cla.cgi_folder);
+		http_error(c, version, "505", "HTTP Version Not Supported",
+				"This is a placeholder error message to handle cgi requests ",
+				CLOSE_CONN, SEND_HTTP_BODY);
 		return;
 	}
 

@@ -13,3 +13,15 @@ what my code does.
 
 NOTE: this code is incomplete and i am working on it currently to make it feature complete and
 also add some form of robustness.
+
+Start the program with  the following :
+./lisod <HTTP port> <HTTPS port> <log file> <lock file> <www folder> <CGI folder or script name> <private key file> <certificate file>
+HTTP port – the port for the HTTP (or echo) server to listen on
+HTTPS port – the port for the HTTPS server to listen on
+log file – file to send log messages to (debug, info, error)
+lock file – file to lock on when becoming a daemon process
+www folder – folder containing a tree to serve as the root of a website
+CGI folder or script name – folder containing CGI programs
+private key file – private key file path
+certificate file – certificate file path
+

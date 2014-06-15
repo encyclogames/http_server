@@ -5,19 +5,9 @@
  */
 
 
-/*****************************************************************************
- *                                                                           *
- * This file represents a hard-coded CGI driver example.  It will execute a  *
- * file, setup environment variables, and pipe stdin and stdout              *
- * appropriately.                                                            *
- *                                                                           *
- * Authors: Athula Balachandran <abalacha@cs.cmu.edu>                        *
- *          Charles Rang <rang@cs.cmu.edu>                                   *
- *          Wolfgang Richter <wolf@cs.cmu.edu>                               *
- *****************************************************************************/
+#include "cgi_handler.h"
 
-#include "lisod.h"
-
+extern char **environ;
 
 /**************** BEGIN CONSTANTS ***************/
 #define FILENAME "./cgi_script.py"
@@ -77,17 +67,62 @@ int handle_cgi_request(client *c, char *uri, char* cgi_cmdline_arg)
 
 	printf("cgi cmdline arg:%sEND\n", cgi_cmdline_arg);
 
-	int i;
-	char remote_addr[22] = "REMOTE_ADDR=";
-	char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
-	strcat(remote_addr, client_ip);
+	char uri_copy[MAXLINE];
+	strcpy(uri_copy, uri);
 
-	printf("%s\nLIST OF ENVP:\n",remote_addr);
-	for (i=0;i <25; i++)
+
+	setenv("GATEWAY_INTERFACE","CGI/1.1",1);
+	setenv("REQUEST_URI",uri,1);
+	setenv("SCRIPT_NAME","/cgi",1);
+	setenv("SERVER_PROTOCOL","HTTP/1.1",1);
+	setenv("SERVER_SOFTWARE","Liso/1.0",1);
+
+	// we cannot set env vars directly to an int since they expect char*
+	// so i make a char* variable that will take the typecast version of
+	// ints to a char and then set the env var to the typecast string
+	char env_var_typecast[10];
+	memset(env_var_typecast, 0, 10);
+	if (c->ssl_connection == 1)
 	{
-		printf("%s\n", ENVP[i]);
+		sprintf (env_var_typecast, "%d", cla.https_port);
+		setenv("SERVER_PORT",env_var_typecast,1);
+	}
+	else
+	{
+		sprintf (env_var_typecast, "%d", cla.http_port);
+		setenv("SERVER_PORT",env_var_typecast,1);
 	}
 
+	char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
+	setenv("REMOTE_ADDR",client_ip,1);
+
+	if (strncmp(c->inbuf, "GET ", 4) == 0)
+		setenv("REQUEST_METHOD","GET",1);
+	else if (strncmp(c->inbuf, "HEAD", 4) == 0)
+		setenv("REQUEST_METHOD","HEAD",1);
+	else if (strncmp(c->inbuf, "POST", 4) == 0)
+		setenv("REQUEST_METHOD","POST",1);
+
+
+
+//	char *x;
+//	/* set environment variable _EDC_ANSI_OPEN_DEFAULT to "Y" */
+//	setenv("_EDC_ANSI_OPEN_DEFAULT","Y",1);
+//	/* set x to the current value of the _EDC_ANSI_OPEN_DEFAULT*/
+//	x = getenv("_EDC_ANSI_OPEN_DEFAULT");
+
+
+
+		int i=0;
+		char remote_addr[22] = "REMOTE_ADDR=";
+//		char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
+		strcat(remote_addr, client_ip);
+		printf("%s\nLIST OF ENVP:\n",remote_addr);
+		while(environ[i])
+		{
+		  printf("%s\n", environ[i++]);
+		}
+		printf("END\n");
 
 
 	return 0;
@@ -105,7 +140,9 @@ int handle_cgi_request(client *c, char *uri, char* cgi_cmdline_arg)
 
 
 /**************** BEGIN UTILITY FUNCTIONS ***************/
-/* error messages stolen from: http://linux.die.net/man/2/execve */
+/* error messages stolen from: http://linux.die.net/man/2/execve
+ * This function was implemented by the course TAs and is provided to us
+ * */
 void execve_error_handler()
 {
 	switch (errno)
