@@ -15,7 +15,9 @@ NOTE: this code is incomplete and i am working on it currently to make it featur
 also add some form of robustness.
 
 Start the program with  the following :
-	"./lisod <HTTP port> <HTTPS port> <log file> <lock file> <www folder> <CGI folder or script name> <private key file> <certificate file>"
+```
+./lisod <HTTP port> <HTTPS port> <log file> <lock file> <www folder> <CGI folder or script name> <private key file> <certificate file>
+```
 HTTP port – the port for the HTTP (or echo) server to listen on
 HTTPS port – the port for the HTTPS server to listen on
 log file – file to send log messages to (debug, info, error)
@@ -24,4 +26,6 @@ www folder – folder containing a tree to serve as the root of a website
 CGI folder or script name – folder containing CGI programs
 private key file – private key file path
 certificate file – certificate file path
+
+This project uses a set of linked list macros called [utlist](http://troydhanson.github.io/uthash/utlist.html)
 
