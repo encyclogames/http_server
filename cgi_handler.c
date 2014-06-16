@@ -55,7 +55,7 @@ char* POST_BODY = "This is the stdin body...\n";
 //////////// SELF CODE
 
 
-int handle_cgi_request(client *c, char *uri, char* cgi_cmdline_arg)
+int handle_cgi_request(client *c, char *uri)
 {
 	printf("inside handle cgi req function\n");
 
@@ -65,15 +65,8 @@ int handle_cgi_request(client *c, char *uri, char* cgi_cmdline_arg)
 
 	printf("uri:%sEND\n", uri);
 
-	printf("cgi cmdline arg:%sEND\n", cgi_cmdline_arg);
-
-	char uri_copy[MAXLINE];
-	strcpy(uri_copy, uri);
-
 
 	setenv("GATEWAY_INTERFACE","CGI/1.1",1);
-	setenv("REQUEST_URI",uri,1);
-	setenv("SCRIPT_NAME","/cgi",1);
 	setenv("SERVER_PROTOCOL","HTTP/1.1",1);
 	setenv("SERVER_SOFTWARE","Liso/1.0",1);
 
@@ -96,40 +89,81 @@ int handle_cgi_request(client *c, char *uri, char* cgi_cmdline_arg)
 	char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
 	setenv("REMOTE_ADDR",client_ip,1);
 
-	if (strncmp(c->inbuf, "GET ", 4) == 0)
+	if (strncmp(c->inbuf, "GET ", 4) == 0) // space after GET is necessary
 		setenv("REQUEST_METHOD","GET",1);
 	else if (strncmp(c->inbuf, "HEAD", 4) == 0)
 		setenv("REQUEST_METHOD","HEAD",1);
 	else if (strncmp(c->inbuf, "POST", 4) == 0)
 		setenv("REQUEST_METHOD","POST",1);
 
+	int ret = set_env_vars_from_uri(uri);
+	if (ret == -1)
+	{
+		http_error( c, "CGI resource not found from uri", "404",
+				"Not Found",
+				"the CGI resource could not be located form uri", DONT_CLOSE_CONN, SEND_HTTP_BODY);
+		return 1;
+	}
+	//	char *x;
+	//	/* set environment variable _EDC_ANSI_OPEN_DEFAULT to "Y" */
+	//	setenv("_EDC_ANSI_OPEN_DEFAULT","Y",1);
+	//	/* set x to the current value of the _EDC_ANSI_OPEN_DEFAULT*/
+	//	x = getenv("_EDC_ANSI_OPEN_DEFAULT");
 
 
-//	char *x;
-//	/* set environment variable _EDC_ANSI_OPEN_DEFAULT to "Y" */
-//	setenv("_EDC_ANSI_OPEN_DEFAULT","Y",1);
-//	/* set x to the current value of the _EDC_ANSI_OPEN_DEFAULT*/
-//	x = getenv("_EDC_ANSI_OPEN_DEFAULT");
 
-
-
-		int i=0;
-		char remote_addr[22] = "REMOTE_ADDR=";
-//		char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
-		strcat(remote_addr, client_ip);
-		printf("%s\nLIST OF ENVP:\n",remote_addr);
-		while(environ[i])
-		{
-		  printf("%s\n", environ[i++]);
-		}
-		printf("END\n");
+	int i=0;
+	char remote_addr[22] = "REMOTE_ADDR=";
+	//		char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
+	strcat(remote_addr, client_ip);
+	printf("%s\nLIST OF ENVP:\n",remote_addr);
+	while(environ[i])
+	{
+		printf("%s\n", environ[i++]);
+	}
+	printf("END\n");
 
 
 	return 0;
 }
 
 
+int set_env_vars_from_uri(char *uri)
+{
+	char uri_copy[MAXLINE];
+	char *path_info;
+	strcpy(uri_copy, uri);
 
+	setenv("REQUEST_URI",uri,1);
+	if (strlen(cla.cgi_script) == 0) // if we have a cgi folder
+	{
+		setenv("SCRIPT_NAME",cla.cgi_folder,1);
+		if (strncmp(uri, cla.cgi_folder, strlen(cla.cgi_folder)) == 0)
+		{
+			path_info = uri+strlen(cla.cgi_folder);
+		}
+		else
+			return -1;
+	}
+	else // the cgi script is hardcoded to be in "/cgi"
+	{
+		setenv("SCRIPT_NAME","/cgi",1);
+		if (strncmp(uri, "/cgi/", 5) == 0)
+		{
+			path_info = uri+5;
+		}
+		else
+			return -1;
+	}
+
+	char *query_string = strstr(uri, "?");
+	setenv("PATH_INFO",path_info,1);
+	setenv("QUERY_STRING",query_string,1);
+
+
+
+return 0;
+}
 
 
 

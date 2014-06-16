@@ -53,12 +53,13 @@ typedef struct {
     char log_file[MAX_FILENAME_LEN];
     char lock_file[MAX_FILENAME_LEN];
     char www_folder[MAX_FILENAME_LEN];
+    char cgi_script[MAX_FILENAME_LEN];
     char cgi_folder[MAX_FILENAME_LEN];
     char private_key_file[MAX_FILENAME_LEN];
     char certificate_file[MAX_FILENAME_LEN];
 } cmd_line_args;
 
-cmd_line_args cla;
+cmd_line_args cla; // environmental var
 /*
  * the client struct that stores the details of the client
  *

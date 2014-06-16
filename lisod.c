@@ -48,7 +48,22 @@ void init_from_command_line(int argc, char **argv)
 	strcpy(cla.log_file, argv[3]);
 	strcpy(cla.lock_file, argv[4]);
 	strcpy(cla.www_folder, argv[5]);
-	strcpy(cla.cgi_folder, argv[6]);
+
+	strcpy(cla.cgi_script, argv[6]);
+	struct stat cgi_stat;
+	stat(argv[6], &cgi_stat);
+	if (S_ISDIR(cgi_stat.st_mode)) // we have a cgi directory
+	{
+		strcpy(cla.cgi_folder, argv[6]);
+		memset(cla.cgi_script, 0, MAX_FILENAME_LEN);
+	}
+	else // we have a cgi script that handles all cgi requests
+	{
+		strcpy(cla.cgi_script, argv[6]);
+		memset(cla.cgi_folder, 0, MAX_FILENAME_LEN);
+	}
+
+
 	strcpy(cla.private_key_file, argv[7]);
 	strcpy(cla.certificate_file, argv[8]);
 
@@ -63,7 +78,7 @@ void init_from_command_line(int argc, char **argv)
 	tm_date = localtime( &rawtime );
 	memset(time_str,0,256);
 	strftime(time_str,256,"%a, %e %b %Y %H:%M:%S", tm_date);
-	fprintf(fp, "Log file for Lisod Server started on Date: %s\r\n", time_str);
+	fprintf(fp, "Log file for Lisod Server started on %s\r\n", time_str);
 	fclose(fp);
 }
 
@@ -425,12 +440,20 @@ void handle_input(client *c, client_pool *p)
 
 
 	// PUT BRANCH FOR CGI HANDLING HERE
-	if (strstr(uri, "/cgi-bin/"))
+	//	if (strstr(uri, "/cgi-bin/"))
+	char *cgi_source;
+	if (strlen(cla.cgi_folder) == 0)
+		cgi_source = cla.cgi_script;
+	else
+		cgi_source = cla.cgi_folder;
+
+	if (strncmp(uri, cgi_source, strlen(cgi_source)) == 0)
 	{
-		handle_cgi_request(c, uri, cla.cgi_folder);
-		http_error(c, version, "505", "HTTP Version Not Supported",
-				"This is a placeholder error message to handle cgi requests ",
-				CLOSE_CONN, SEND_HTTP_BODY);
+		close_connection = handle_cgi_request(c, uri);
+		if (close_connection == 1)
+		{
+			disconnect_client(c,p);
+		}
 		return;
 	}
 

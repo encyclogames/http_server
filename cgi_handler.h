@@ -33,7 +33,10 @@ typedef struct {
 } cgi_client;
 
 
-int handle_cgi_request(client *c, char *uri, char* cgi_cmdline_arg);
+int handle_cgi_request(client *c, char *uri);
+
+// returns -1 if fails, success returns 0
+int set_env_vars_from_uri(char *uri);
 
 /*
  * pipe notes:
