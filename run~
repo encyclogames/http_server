@@ -1,4 +1,0 @@
-#!/bin/bash
-make clean
-make
-./lisod 8080 4443 /tmp/lisod.log /tmp/liso.lock www /tmp/cgi/flaskr.py /tmp/priv.key /tmp/cert.crt &

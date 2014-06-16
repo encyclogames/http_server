@@ -3,6 +3,7 @@
 #local files
 *.crt
 *.key
+*~
 
 # Compiled source #
 ###################
