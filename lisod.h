@@ -59,34 +59,37 @@ typedef struct {
     char certificate_file[MAX_FILENAME_LEN];
 } cmd_line_args;
 
-cmd_line_args cla; // environmental var
+cmd_line_args cla; // global scope
+
+
 /*
  * the client struct that stores the details of the client
  *
  * most variables of the single char datatype are designed as boolean
  * flag variables that will only switch between values 0(false) and 1(true)
  *
- * inbuf = client internal buffer
+ * "inbuf" is the internal buffer that stores the http request of the client
  *
- * close_connection notes whether the client has sent a "Connection:Close"
+ * "close_connection" notes whether the client has sent a "Connection:Close"
  * in its http header or not indicating that my server should remove it
  * from its persistent connection set of file descriptors
  *
- * ssl_connection is a flag variable that indicates whether the client is using
- * an ssl connection or not when connecting to the server. This is necessary
- * for me to be able to wrap the connection with the ssl API.
+ * "ssl_connection" is a flag variable that indicates whether the client is
+ * using an ssl connection or not when connecting to the server. This is
+ * necessary for me to be able to wrap the connection with the ssl API.
  *
- * request_incomplete is a variable that saves the state of a client when the
+ * "request_incomplete" is a variable that saves the state of a client when the
  * server receives a pipelined request from it. When a request is pipelined,
  * the server does not receive the whole request in a single read from the
  * client socket, and thus i need a way to parse through the whole request
  * before i start working on the request
  *
- * request_incomplete can have 4 values
+ * "request_incomplete" can have 5 values
  * 0 - the request is complete and the server can start serving it
  * 1 - request is incomplete and its a GET method
  * 2 - request is incomplete and its a HEAD method
  * 3 - request is incomplete and its a POST method
+ * 4 - request is incomplete and its a CGI request with any method
  *
  */
 typedef struct {

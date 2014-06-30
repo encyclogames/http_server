@@ -44,7 +44,7 @@ int handle_GET(client *c, char *uri, char* www_folder)
 			// buffer not full but no request end means broken http request
 			http_error( c, "Client has been disconnected from server", "400",
 					"Bad Request",
-					"broken HTTP request received", 1, 1);
+					"broken HTTP request received", CLOSE_CONN, SEND_HTTP_BODY);
 			return 1;
 		}
 	}

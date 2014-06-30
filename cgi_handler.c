@@ -58,11 +58,8 @@ char* POST_BODY = "This is the stdin body...\n";
 int handle_cgi_request(client *c, char *uri)
 {
 	printf("inside handle cgi req function\n");
-
 	printf("got these args\n");
-
 	printf("client inbuf:%sEND\n", c->inbuf);
-
 	printf("uri:%sEND\n", uri);
 
 
@@ -101,7 +98,8 @@ int handle_cgi_request(client *c, char *uri)
 	{
 		http_error( c, "CGI resource not found from uri", "404",
 				"Not Found",
-				"the CGI resource could not be located form uri", DONT_CLOSE_CONN, SEND_HTTP_BODY);
+				"the CGI resource could not be located form uri",
+				DONT_CLOSE_CONN, SEND_HTTP_BODY);
 		return 1;
 	}
 	//	char *x;
@@ -160,9 +158,7 @@ int set_env_vars_from_uri(char *uri)
 	setenv("PATH_INFO",path_info,1);
 	setenv("QUERY_STRING",query_string,1);
 
-
-
-return 0;
+	return 0;
 }
 
 

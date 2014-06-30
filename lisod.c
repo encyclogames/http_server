@@ -408,23 +408,19 @@ void handle_input(client *c, client_pool *p)
 		disconnect_client(c,p);
 	return;
 	break;
+	case 4:close_connection = handle_cgi_request(c, uri);
+	if (close_connection == 1)
+		disconnect_client(c,p);
+	return;
 	default: break;
 	}
 
 	// we come here if the request is a fresh one (not a request that is too big
 	// for the read buffer and thus got pipelined )
-	//	printf("Skipped Switch\n");
+
 	// now start parsing the first line of the request for correct HTTP
 	// version and finding out what request method has been received
 	request_line = strtok(inbuf, "\r\n");
-
-	// debug output to show the http request
-	// i = 0;
-	//	while (request_line != NULL)
-	//	{
-	//		printf("Line %d : %s\n", i++, request_line);
-	//		request_line = strtok(NULL, "\r\n");
-	//	}
 
 	num_matches = sscanf(request_line, "%s %s %s", method, uri, version);
 	//printf("method %s uri %s version %s \n", method, uri, version);
