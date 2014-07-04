@@ -62,7 +62,28 @@ int handle_cgi_request(client *c, char *uri)
 	printf("client inbuf:%sEND\n", c->inbuf);
 	printf("uri:%sEND\n", uri);
 
+	if (set_env_vars(c, uri) == 1)
+		return 1;
 
+
+	// finished getting all env vars set
+	int i=0;
+	char remote_addr[22] = "REMOTE_ADDR=";
+	char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
+	strcat(remote_addr, client_ip);
+	printf("%s\nLIST OF ENVP:\n",remote_addr);
+	while(environ[i])
+	{
+		printf("%s\n", environ[i++]);
+	}
+	printf("END\n");
+
+
+	return 0;
+}
+
+int set_env_vars(client *c, char* uri)
+{
 	setenv("GATEWAY_INTERFACE","CGI/1.1",1);
 	setenv("SERVER_PROTOCOL","HTTP/1.1",1);
 	setenv("SERVER_SOFTWARE","Liso/1.0",1);
@@ -107,24 +128,8 @@ int handle_cgi_request(client *c, char *uri)
 	//	setenv("_EDC_ANSI_OPEN_DEFAULT","Y",1);
 	//	/* set x to the current value of the _EDC_ANSI_OPEN_DEFAULT*/
 	//	x = getenv("_EDC_ANSI_OPEN_DEFAULT");
-
-
-
-	int i=0;
-	char remote_addr[22] = "REMOTE_ADDR=";
-	//		char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
-	strcat(remote_addr, client_ip);
-	printf("%s\nLIST OF ENVP:\n",remote_addr);
-	while(environ[i])
-	{
-		printf("%s\n", environ[i++]);
-	}
-	printf("END\n");
-
-
 	return 0;
 }
-
 
 int set_env_vars_from_uri(char *uri)
 {
