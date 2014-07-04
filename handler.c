@@ -532,8 +532,13 @@ void http_error(client *c, char *cause, char *errnum,
 	sprintf(buf, "HTTP/1.1 %s %s\r\n", errnum, shortmsg);
 	sprintf(buf, "%sContent-type: text/html\r\n", buf);
 	sprintf(buf, "%sContent-length: %d\r\n", buf, (int)strlen(body));
+
+	// if we are closing the connection, set client connection status to closed
 	if (connection == 1)
+	{
+		c->close_connection = connection;
 		sprintf(buf, "%sConnection: close\r\n", buf);
+	}
 	sprintf(buf, "%s\r\n", buf);
 
 	if (c->ssl_connection == 0)
@@ -550,7 +555,7 @@ void http_error(client *c, char *cause, char *errnum,
 			write_to_ssl_client(c, body, strlen(body));
 		}
 	}
-	// remember to close the client socket
+	// remember to set the client socket to closed
 }
 
 

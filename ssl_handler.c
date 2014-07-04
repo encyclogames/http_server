@@ -180,12 +180,94 @@ void accept_ssl_client(int listen_sock, client_pool *p)
 }
 
 
-int read_from_ssl_client(client *c, client_pool *p, char* inbuf)
+//int read_from_ssl_client(client *c, client_pool *p, char* inbuf)
+//{
+//	//printf("START SSL READ FROM SOCKET %d\n",c->sock);
+//	char buffer[MAX_LEN];
+//	memset(buffer, 0, MAX_LEN);
+//	int readbytes = 0, final_readbytes = 0;
+//	int readbyte_limit = MAX_LEN;
+//	int read_blocked = 0,offset = 0;
+//	long err_val;
+//	char err_string[MAXLINE];
+//	char* http_end;
+//	sslobj* temp_ssl;
+//	LL_SEARCH_SCALAR(ssl_client_list,temp_ssl,sock,c->sock);
+//
+//	////////////////////////////////////////////
+//	// safety code for python ssl client sanity check
+//	// TO DO: fix the fd closing issue in order to not use this
+//	//	if ((temp_ssl->next))
+//	//		temp_ssl=(temp_ssl->next);
+//
+//	/////////////////   BASIC SSL ECHO FOR PYTHON TEST
+//	//	int readret = 0;
+//	//	char buf[BUF_SIZE];
+//	//	while((readret = SSL_read(temp_ssl->client_ssl, buf, BUF_SIZE)) > 0)
+//	//	{
+//	//		SSL_write(temp_ssl->client_ssl, buf, readret);
+//	//		memset(buf, 0, BUF_SIZE);
+//	//	}
+//	//return 0;
+//
+//	/////////////////////////////////////////////
+//
+//
+//	////////////////// MUCH IMPROVED VERSION
+//	//////////////////  NOTE: DOES NOT HAVE ECHO SUPPORT FOR PYTHON TEST
+//	do{
+//		do {
+//			read_blocked=0;
+//			readbytes=SSL_read(temp_ssl->client_ssl,buffer,readbyte_limit);
+//			switch(SSL_get_error(temp_ssl->client_ssl,readbytes))
+//			{
+//			case SSL_ERROR_NONE:
+//				//printf("got this from ssl: %s\n", buffer);
+//				break;
+//			case SSL_ERROR_ZERO_RETURN:
+//				// End of data or client has no request
+//				return 0;
+//				break;
+//			case SSL_ERROR_WANT_READ:
+//				read_blocked=1;
+//				break;
+//			default:
+//				printf("SSL read problem\n");
+//				err_val = ERR_get_error();
+//				memset(err_string, 0, MAXLINE);
+//				ERR_error_string(err_val, err_string);
+//				printf("the error is : %s\n",err_string);
+//				return 0;
+//			}
+//			// We need a check for read_blocked here because SSL_pending()
+//			// doesn’t work properly during a silent handshake. This check
+//			// prevents a busy-wait loop around SSL_read()
+//		} while (SSL_pending(temp_ssl->client_ssl) && !read_blocked);
+//
+//		// we dont know if we received the complete http request from this
+//		// SSL record, so we read next record until we have the complete http
+//		// request or reach a cap of 8 Kilobytes read
+//		//printf("stats %d\n",readbytes);
+//		memcpy(inbuf+final_readbytes,buffer,readbytes);
+//		final_readbytes += readbytes;
+//		readbyte_limit -= readbytes;
+//		http_end = strstr(inbuf, "\r\n\r\n");
+//	} while ((http_end == NULL) && (final_readbytes < MAX_LEN));
+//	//	printf("got out of do loop when ssl read finished for client %d\n",
+//	//			temp_ssl->sock);
+//	//	printf("stats %d\n",
+//	//			readbytes);
+//
+//	return final_readbytes;
+//}
+
+int read_from_ssl_client(client *c, client_pool *p, char* inbuf, int numbytes)
 {
 	//printf("START SSL READ FROM SOCKET %d\n",c->sock);
 	char buffer[MAX_LEN];
 	memset(buffer, 0, MAX_LEN);
 	int readbytes = 0, final_readbytes = 0;
+	int readbyte_limit = numbytes; // MAX_LEN
 	int read_blocked = 0,offset = 0;
 	long err_val;
 	char err_string[MAXLINE];
@@ -217,7 +299,7 @@ int read_from_ssl_client(client *c, client_pool *p, char* inbuf)
 	do{
 		do {
 			read_blocked=0;
-			readbytes=SSL_read(temp_ssl->client_ssl,buffer,MAX_LEN);
+			readbytes=SSL_read(temp_ssl->client_ssl,buffer,readbyte_limit);
 			switch(SSL_get_error(temp_ssl->client_ssl,readbytes))
 			{
 			case SSL_ERROR_NONE:
@@ -245,12 +327,13 @@ int read_from_ssl_client(client *c, client_pool *p, char* inbuf)
 
 		// we dont know if we received the complete http request from this
 		// SSL record, so we read next record until we have the complete http
-		// request or reach a cap of 8Kb bytes read
+		// request or reach a cap of 8 Kilobytes read
 		//printf("stats %d\n",readbytes);
 		memcpy(inbuf+final_readbytes,buffer,readbytes);
 		final_readbytes += readbytes;
+		readbyte_limit -= readbytes;
 		http_end = strstr(inbuf, "\r\n\r\n");
-	} while ((http_end == NULL) && (final_readbytes < MAX_LEN));
+	} while ((http_end == NULL) && (final_readbytes < numbytes)); // MAX_LEN
 	//	printf("got out of do loop when ssl read finished for client %d\n",
 	//			temp_ssl->sock);
 	//	printf("stats %d\n",
