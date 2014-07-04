@@ -336,8 +336,7 @@ void handle_input(client *c, client_pool *p)
 	// put in call for ssl read function to transfer data to inbuf
 	if (c->ssl_connection == 1)
 	{
-		//read_from_ssl_socket(c, ssl_client_list, p, inbufptr);
-		nread = read_from_ssl_client(c, p, inbufptr);
+		nread = read_from_ssl_client(c, p, inbufptr, MAX_HEADER_LEN);
 		//printf("out of ssl read in handle input: %s\n"
 		//		"and numbytes = %d\n", inbufptr, nread);
 		//read_from_ssl_socket()
@@ -436,6 +435,7 @@ void handle_input(client *c, client_pool *p)
 
 
 	// PUT BRANCH FOR CGI HANDLING HERE
+	// TODO: put "/cgi/" as the comparison string for cgi script
 	//	if (strstr(uri, "/cgi-bin/"))
 	char *cgi_source;
 	if (strlen(cla.cgi_folder) == 0)
@@ -463,7 +463,8 @@ void handle_input(client *c, client_pool *p)
 		if (strcmp(version, req_ver) != 0)
 		{
 			http_error(c, version, "505", "HTTP Version Not Supported",
-					"This server accepts HTTP requests of the following version only ", 1, 0);
+					"This server accepts HTTP requests of the following version only",
+					CLOSE_CONN, DONT_SEND_HTTP_BODY);
 			disconnect_client(c, p);
 			return;
 		}
@@ -477,7 +478,8 @@ void handle_input(client *c, client_pool *p)
 	else if (strcmp(version, req_ver) != 0)
 	{
 		http_error(c, version, "505", "HTTP Version Not Supported",
-				"This server accepts HTTP requests of the following version only ", 1, 1);
+				"This server accepts HTTP requests of the following version only",
+				CLOSE_CONN, SEND_HTTP_BODY);
 		disconnect_client(c, p);
 		return;
 	}
@@ -494,16 +496,14 @@ void handle_input(client *c, client_pool *p)
 	{
 		http_error(c, method, "501", "Not Implemented",
 				"This server only handles GET,HEAD and POST requests. "
-				"This method is unimplemented", 0, 1);
+				"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
 		return;
 	}
 	if (close_connection == 1)
 	{
-		printf("got a close connection");
 		disconnect_client(c,p);
 	}
 
-	//printf("OK\n");
 }
 
 void log_into_file(char *message)
