@@ -17,8 +17,8 @@
 typedef struct {
 	pid_t child_pid;		// pid of the execed child process
 	int client_sock;		// the client socket that expects the response
-    char cgi_buf[MAX_LEN];
-    unsigned int cgi_buf_size;
+//    char cgi_buf[MAX_LEN];
+//    unsigned int cgi_buf_size;
     int pipe_parent2child[2]; 	// child_stdin pipe
     int pipe_child2parent[2];	// child_stdout pipe
     /*
@@ -38,14 +38,17 @@ typedef struct {
 
 int handle_cgi_request(client *c, char *uri);
 
-/* this function sets up the environmental variables for the cgiscript
- *
+/* this function sets up the common environmental variables for the cgiscript
  */
 int set_env_vars(client *c, char* uri);
 
-/* an auxiliary function used by set_env_vars to set the HTTP-Specific
- * environmental-Variables for the cgi script by parsing the request sent
- * by the client
+/* sets the HTTP-Specific environmental-Variables for the cgi script by
+ * parsing the request sent by the client
+ *
+ * return value:
+ * -1 if error
+ * 0 if no content-length found
+ * value of content-length if its found
  */
 int set_http_env_vars(client *c); //
 

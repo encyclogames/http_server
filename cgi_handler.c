@@ -57,13 +57,37 @@ char* POST_BODY = "This is the stdin body...\n";
 
 int handle_cgi_request(client *c, char *uri)
 {
+	char* request_end;
 	printf("inside handle cgi req function\n");
 	printf("got these args\n");
 	printf("client inbuf:%sEND\n", c->inbuf);
 	printf("uri:%sEND\n", uri);
 
+	request_end = strstr(c->inbuf, "\r\n\r\n");
+	// first check to see whether we have an incomplete request or not
+	if (request_end != NULL)
+	{
+		c->request_incomplete = 0;
+	}
+	// buffer does not contain "\r\n\r\n"
+	else
+	{
+		http_error( c, "Client has been disconnected from server", "400",
+				"Bad Request",
+				"broken HTTP request received", CLOSE_CONN, SEND_HTTP_BODY);
+		return 1;
+	}
+
 	if (set_env_vars(c, uri) == 1)
 		return 1;
+
+	// need to put into function that does http request parsing
+	// and setting the http env vars
+
+
+
+
+
 
 
 	// finished getting all env vars set
@@ -113,6 +137,16 @@ int set_env_vars(client *c, char* uri)
 		setenv("REQUEST_METHOD","HEAD",1);
 	else if (strncmp(c->inbuf, "POST", 4) == 0)
 		setenv("REQUEST_METHOD","POST",1);
+	else
+	{
+		char* space_after_method = strstr(c->inbuf, " ");
+		*space_after_method = '\0';
+		// at this point, c->inbuf only has method as a string in it
+		http_error(c, c->inbuf, "501", "Not Implemented",
+						"This server only handles GET,HEAD and POST requests. "
+						"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
+		return -1;
+	}
 
 	int ret = set_env_vars_from_uri(uri);
 	if (ret == -1)
@@ -121,7 +155,7 @@ int set_env_vars(client *c, char* uri)
 				"Not Found",
 				"the CGI resource could not be located form uri",
 				DONT_CLOSE_CONN, SEND_HTTP_BODY);
-		return 1;
+		return -1;
 	}
 	//	char *x;
 	//	/* set environment variable _EDC_ANSI_OPEN_DEFAULT to "Y" */
@@ -133,7 +167,7 @@ int set_env_vars(client *c, char* uri)
 
 int set_env_vars_from_uri(char *uri)
 {
-	char uri_copy[MAXLINE];
+	char uri_copy[MAXLINE] = "";
 	char *path_info;
 	strcpy(uri_copy, uri);
 
@@ -145,7 +179,7 @@ int set_env_vars_from_uri(char *uri)
 		{
 			path_info = uri+strlen(cla.cgi_folder);
 		}
-		else
+		else // cgi folder not found in uri, so cannot proceed with request
 			return -1;
 	}
 	else // the cgi script is hardcoded to be in "/cgi"
@@ -155,11 +189,12 @@ int set_env_vars_from_uri(char *uri)
 		{
 			path_info = uri+5;
 		}
-		else
+		else // uri does not have proper cgi script location
+			 // so cannot proceed with request
 			return -1;
 	}
 
-	char *query_string = strstr(uri, "?");
+	char *query_string = strstr(uri, "?")+1;
 	setenv("PATH_INFO",path_info,1);
 	setenv("QUERY_STRING",query_string,1);
 
