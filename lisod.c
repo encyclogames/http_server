@@ -443,13 +443,18 @@ void handle_input(client *c, client_pool *p)
 	else
 		cgi_source = cla.cgi_folder;
 
-	if (strncmp(uri, cgi_source, strlen(cgi_source)) == 0)
+//	if (strncmp(uri, cgi_source, strlen(cgi_source)) == 0)
+	if (strstr(uri, "/cgi-bin/"))
 	{
 		close_connection = handle_cgi_request(c, uri);
 		if (close_connection == 1)
 		{
 			disconnect_client(c,p);
 		}
+		// dummy error
+		http_error(c, method, "501", "Not Implemented",
+						"This server only handles GET,HEAD and POST requests. "
+						"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
 		return;
 	}
 
