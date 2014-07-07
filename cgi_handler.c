@@ -47,7 +47,7 @@ char* ENVP[] = {
 		/*25*/NULL
 };
 
-char* POST_BODY = "This is the stdin body...\n";
+char *POST_BODY = "This is the stdin body...\n";
 /**************** END CONSTANTS ***************/
 
 
@@ -57,7 +57,9 @@ char* POST_BODY = "This is the stdin body...\n";
 
 int handle_cgi_request(client *c, char *uri)
 {
-	char* request_end;
+	char *request_end;
+	char *message_body;
+	int content_length = 0;
 	printf("inside handle cgi req function\n");
 	printf("got these args\n");
 	printf("client inbuf:%sEND\n", c->inbuf);
@@ -77,14 +79,30 @@ int handle_cgi_request(client *c, char *uri)
 				"broken HTTP request received", CLOSE_CONN, SEND_HTTP_BODY);
 		return 1;
 	}
+	message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
 
-	if (set_env_vars(c, uri) == 1)
-		return 1;
+printf("testing\n");
+//	if (set_env_vars(c, uri) == 1)
+//		return 1;
 
 	// need to put into function that does http request parsing
 	// and setting the http env vars
+	content_length = set_http_env_vars(c); // check return value for content length
 
-
+	if (content_length != 0)
+	{
+		// copy message body into new buffer to be written to exec child
+		if (message_body != NULL && message_body[0] != '\0')
+		{
+			// Variable is set to value with length > 0
+			// ...
+		}
+		else
+		{
+			// no message body even though request had content length
+			// send back server error
+		}
+	}
 
 
 
@@ -106,7 +124,7 @@ int handle_cgi_request(client *c, char *uri)
 	return 0;
 }
 
-int set_env_vars(client *c, char* uri)
+int set_env_vars(client *c, char *uri)
 {
 	setenv("GATEWAY_INTERFACE","CGI/1.1",1);
 	setenv("SERVER_PROTOCOL","HTTP/1.1",1);
@@ -139,21 +157,21 @@ int set_env_vars(client *c, char* uri)
 		setenv("REQUEST_METHOD","POST",1);
 	else
 	{
-		char* space_after_method = strstr(c->inbuf, " ");
+		char *space_after_method = strstr(c->inbuf, " ");
 		*space_after_method = '\0';
 		// at this point, c->inbuf only has method as a string in it
 		http_error(c, c->inbuf, "501", "Not Implemented",
-						"This server only handles GET,HEAD and POST requests. "
-						"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
+				"This server only handles GET,HEAD and POST requests. "
+				"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
 		return -1;
 	}
 
 	int ret = set_env_vars_from_uri(uri);
 	if (ret == -1)
 	{
-		http_error( c, "CGI resource not found from uri", "404",
+		http_error( c, uri, "404",
 				"Not Found",
-				"the CGI resource could not be located form uri",
+				"the CGI resource could not be located from uri",
 				DONT_CLOSE_CONN, SEND_HTTP_BODY);
 		return -1;
 	}
@@ -190,7 +208,7 @@ int set_env_vars_from_uri(char *uri)
 			path_info = uri+5;
 		}
 		else // uri does not have proper cgi script location
-			 // so cannot proceed with request
+			// so cannot proceed with request
 			return -1;
 	}
 
@@ -201,7 +219,80 @@ int set_env_vars_from_uri(char *uri)
 	return 0;
 }
 
+int set_http_env_vars(client *c)
+{
+	char *request_line;
+//	char *last_request_line_read;
+	int content_length = 0;
+//	char *message_body = strstr(c->inbuf, "\r\n\r\n")+4;
+	request_line = strtok(c->inbuf, "\r\n");
+	// parse each line for headers that need to be supported
+//		int i = 0;
+	while (request_line != NULL)
+	{
+//		printf("iter %d\n",i++);
+//		last_request_line_read = request_line;
+		if (strstr(request_line,"Connection:") != NULL)
+		{
+			if (strcmp(strstr(request_line,":")+2,"close") == 0)
+				c->close_connection = 1;
+			setenv("HTTP_CONNECTION",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"Accept:") != NULL)
+		{
+			setenv("HTTP_ACCEPT",strstr(request_line,":")+2,1);
+			//			printf("blah%sblah",strstr(request_line,":")+2);
+		}
+		else if (strstr(request_line,"Referer:") != NULL)
+		{
+			setenv("HTTP_REFERER",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"Accept-Encoding:") != NULL)
+		{
+			setenv("HTTP_ACCEPT_ENCODING",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"Accept-Language:") != NULL)
+		{
+			setenv("HTTP_ACCEPT_LANGUAGE",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"Accept-Charset:") != NULL)
+		{
+			setenv("HTTP_ACCEPT_CHARSET",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"Host:") != NULL)
+		{
+			setenv("HTTP_HOST",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"Cookie:") != NULL)
+		{
+			setenv("HTTP_COOKIE",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"User-Agent:") != NULL)
+		{
+			setenv("HTTP_USER_AGENT",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"Content-Type:") != NULL)
+		{
+			setenv("CONTENT_TYPE",strstr(request_line,":")+2,1);
+		}
+		else if (strstr(request_line,"Content-Length:") != NULL)
+		{
+			setenv("CONTENT_LENGTH",strstr(request_line,":")+2,1);
+			content_length =  atoi(strstr(request_line,":")+2);
+			printf("GOT CL:%d\n",content_length);
+		}
 
+
+		//		setenv("REMOTE_ADDR",client_ip,1);
+		//printf("Line %d : %s\n", i++, request_line);
+		//sscanf(request_line, "%s %s", header_name, header_value);
+		//printf("Line %d : %s %s\n", i++, header_name, header_value);
+		request_line = strtok(NULL, "\r\n");
+	}
+
+
+	return content_length;
+}
 
 
 
