@@ -57,15 +57,16 @@ char *POST_BODY = "This is the stdin body...\n";
 
 int handle_cgi_request(client *c, char *uri)
 {
-	char *request_end;
-	char *message_body;
-	int content_length = 0;
+	char *request_end = NULL;
+	char *message_body = NULL;
+	int content_length = 0, request_length = 0;
 	printf("inside handle cgi req function\n");
 	printf("got these args\n");
 	printf("client inbuf:%sEND\n", c->inbuf);
 	printf("uri:%sEND\n", uri);
 
 	request_end = strstr(c->inbuf, "\r\n\r\n");
+	message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
 	// first check to see whether we have an incomplete request or not
 	if (request_end != NULL)
 	{
@@ -79,11 +80,10 @@ int handle_cgi_request(client *c, char *uri)
 				"broken HTTP request received", CLOSE_CONN, SEND_HTTP_BODY);
 		return 1;
 	}
-	message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
 
-printf("testing\n");
-//	if (set_env_vars(c, uri) == 1)
-//		return 1;
+	printf("testing\n");
+	//	if (set_env_vars(c, uri) == 1)
+	//		return 1;
 
 	// need to put into function that does http request parsing
 	// and setting the http env vars
@@ -91,17 +91,20 @@ printf("testing\n");
 
 	if (content_length != 0)
 	{
-		// copy message body into new buffer to be written to exec child
-		if (message_body != NULL && message_body[0] != '\0')
+		printf("size:%d\nD : %d\n", c->inbuf_size, message_body - c->inbuf);
+		request_length = message_body - c->inbuf;
+		if (c->inbuf_size - request_length < content_length)
 		{
-			// Variable is set to value with length > 0
-			// ...
+			// the client buffer does not have the complete message body
+			// so we read more from the client socket
 		}
 		else
 		{
-			// no message body even though request had content length
-			// send back server error
+			// the client buffer has the whole message body in it already
+			// prepare it into new buffer to be written to exec child
 		}
+
+
 	}
 
 
@@ -114,10 +117,10 @@ printf("testing\n");
 	char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
 	strcat(remote_addr, client_ip);
 	printf("%s\nLIST OF ENVP:\n",remote_addr);
-	while(environ[i])
-	{
-		printf("%s\n", environ[i++]);
-	}
+	//	while(environ[i])
+	//	{
+	//		printf("%s\n", environ[i++]);
+	//	}
 	printf("END\n");
 
 
@@ -222,16 +225,16 @@ int set_env_vars_from_uri(char *uri)
 int set_http_env_vars(client *c)
 {
 	char *request_line;
-//	char *last_request_line_read;
+	//	char *last_request_line_read;
 	int content_length = 0;
-//	char *message_body = strstr(c->inbuf, "\r\n\r\n")+4;
+	//	char *message_body = strstr(c->inbuf, "\r\n\r\n")+4;
 	request_line = strtok(c->inbuf, "\r\n");
 	// parse each line for headers that need to be supported
-//		int i = 0;
+	//		int i = 0;
 	while (request_line != NULL)
 	{
-//		printf("iter %d\n",i++);
-//		last_request_line_read = request_line;
+		//		printf("iter %d\n",i++);
+		//		last_request_line_read = request_line;
 		if (strstr(request_line,"Connection:") != NULL)
 		{
 			if (strcmp(strstr(request_line,":")+2,"close") == 0)
