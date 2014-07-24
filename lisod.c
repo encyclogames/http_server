@@ -49,7 +49,7 @@ void init_from_command_line(int argc, char **argv)
 	strcpy(cla.lock_file, argv[4]);
 	strcpy(cla.www_folder, argv[5]);
 
-	strcpy(cla.cgi_script, argv[6]);
+	//	strcpy(cla.cgi_script, argv[6]);
 	struct stat cgi_stat;
 	stat(argv[6], &cgi_stat);
 	if (S_ISDIR(cgi_stat.st_mode)) // we have a cgi directory
@@ -62,7 +62,6 @@ void init_from_command_line(int argc, char **argv)
 		strcpy(cla.cgi_script, argv[6]);
 		memset(cla.cgi_folder, 0, MAX_FILENAME_LEN);
 	}
-
 
 	strcpy(cla.private_key_file, argv[7]);
 	strcpy(cla.certificate_file, argv[8]);
@@ -87,11 +86,14 @@ int main( int argc, char *argv[] )
 {
 	if (argc < 8) usage();
 
+	// initialise global vars
 	init_from_command_line(argc, argv);
+	init_ssl(cla.private_key_file, cla.certificate_file);
+	cgi_client_list = NULL;
 
 	// First daemonize the server process
 	// daemonize(cla.lock_file);
-	init_ssl(cla.private_key_file, cla.certificate_file);
+
 	//printf( "Listening on port %d for new clients \n", cla.http_port);
 	//fflush(stdout);
 	web_server();
@@ -169,6 +171,7 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 	fd_set writefds;
 	struct timeval timeout;
 	int i, maxfd, rc;
+	cgi_client *cgi_itr;
 	signal(SIGPIPE, SIG_IGN);
 
 	while (1)
@@ -194,13 +197,18 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 			if (c->sock > maxfd) maxfd = c->sock;
 		}
 
+		// TO DO : PUT IN CODE FOR SETTING FDS FOR EXECED CGI CHILDREN
+
+
+		// pipe_child2parent[READ_END]
+
 		// go through ssl client list and set socket in read fd
-		// TO DO
-		//		LL_FOREACH(ssl_client_list, ssl_itr)
-		//		{
-		//			FD_SET(ssl_itr->sock, &readfds);
-		//			if (ssl_itr->sock > maxfd) maxfd = ssl_itr->sock;
-		//		}
+		LL_FOREACH(cgi_client_list, cgi_itr)
+		{
+			FD_SET(cgi_itr->pipe_child2parent[READ_END], &readfds);
+			if (cgi_itr->pipe_child2parent[READ_END] > maxfd)
+				maxfd = cgi_itr->pipe_child2parent[READ_END];
+		}
 
 		rc = select(maxfd+1, &readfds, NULL, NULL, &timeout);
 		if (rc == -1)
@@ -226,10 +234,9 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 			//			int count = 0;
 			//			LL_FOREACH(ssl_client_list,temp_ssl)
 			//			{
-			//				printf("in isset %d\n", temp_ssl->sock);
+			//				printf("ssl in isset %d\n", temp_ssl->sock);
 			//				count++;
 			//			}
-			//
 			//			printf("finished printing socks of ssl clients count = %d\n",count);
 		}
 
@@ -243,6 +250,17 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 			if (FD_ISSET(c->sock, &readfds))
 				handle_input(c, p);
 		}
+
+		// TO DO : add code for sending response from cgi child to the client
+		LL_FOREACH(cgi_client_list, cgi_itr)
+		{
+			if (FD_ISSET(cgi_itr->pipe_child2parent[READ_END], &readfds))
+			{
+				transfer_response_from_cgi_to_client(cgi_itr, p);
+			}
+
+		}
+
 	}
 }
 
@@ -326,7 +344,6 @@ void handle_input(client *c, client_pool *p)
 	char* inbufptr = inbuf;
 	char method[10], uri[MAXLINE], version[12] ;
 
-
 	//	DPRINTF(DEBUG_INPUT, "Handling input from client %d\n", c->sock);
 	memset(inbuf, 0, MAX_HEADER_LEN+1);
 	memset(method, 0, 10);
@@ -336,16 +353,14 @@ void handle_input(client *c, client_pool *p)
 	// put in call for ssl read function to transfer data to inbuf
 	if (c->ssl_connection == 1)
 	{
-		nread = read_from_ssl_client(c, p, inbufptr, MAX_HEADER_LEN);
-		//printf("out of ssl read in handle input: %s\n"
-		//		"and numbytes = %d\n", inbufptr, nread);
-		//read_from_ssl_socket()
+		nread = read_from_ssl_client(c, inbufptr, sizeof(inbuf)-1);
+		//printf("out of ssl read in handle input: %sEND\n", inbufptr);
 	}
 	else
 	{
 		nread = read(c->sock, inbuf, sizeof(inbuf)-1);
 		inbufptr = inbuf;
-		//printf("out of basic read in handle input: %s\n", inbufptr);
+		//printf("out of basic read in handle input: %sEND\n", inbufptr);
 	}
 	//printf("read %d bytes from client\n",nread);
 	//printf("%sEND\n",inbuf);
@@ -359,7 +374,8 @@ void handle_input(client *c, client_pool *p)
 	{
 		http_error( c, "Error from reading client socket", "500",
 				"Internal Server Error",
-				"An internal server error has occurred ", 1, 1);
+				"An internal server error has occurred ",
+				CLOSE_CONN, SEND_HTTP_BODY);
 		disconnect_client(c, p);
 		return;
 	}
@@ -433,18 +449,18 @@ void handle_input(client *c, client_pool *p)
 		return;
 	}
 
-
+	/******************************* CGI BRANCH ******************************/
 	// PUT BRANCH FOR CGI HANDLING HERE
 	// TODO: put "/cgi/" as the comparison string for cgi script
 	//	if (strstr(uri, "/cgi-bin/"))
-	char *cgi_source;
-	if (strlen(cla.cgi_folder) == 0)
-		cgi_source = cla.cgi_script;
-	else
-		cgi_source = cla.cgi_folder;
+	//	char *cgi_source;
+	//	if (strlen(cla.cgi_folder) == 0)
+	//		cgi_source = cla.cgi_script;
+	//	else
+	//		cgi_source = cla.cgi_folder;
 
-//	if (strncmp(uri, cgi_source, strlen(cgi_source)) == 0)
-	if (strstr(uri, "/cgi-bin/"))
+	//	if (strncmp(uri, cgi_source, strlen(cgi_source)) == 0)
+	if (strstr(uri, "/cgi/"))
 	{
 		close_connection = handle_cgi_request(c, uri);
 		if (close_connection == 1)
@@ -452,9 +468,18 @@ void handle_input(client *c, client_pool *p)
 			disconnect_client(c,p);
 		}
 		// dummy error
-		http_error(c, method, "501", "Not Implemented",
-						"This server only handles GET,HEAD and POST requests. "
-						"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
+//		http_error(c, method, "501", "Not Implemented",
+//				"This server only handles GET,HEAD and POST requests. "
+//				"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
+
+		cgi_client* temp_cgi;
+		int count = 0;
+		LL_FOREACH(cgi_client_list,temp_cgi)
+		{
+			printf("cgi in isset %d\n", temp_cgi->client_sock);
+			count++;
+		}
+		printf("finished printing socks of cgiclients count = %d\n",count);
 		return;
 	}
 

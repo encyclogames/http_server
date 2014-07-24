@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <openssl/ssl.h>
@@ -34,7 +35,7 @@
 
 
 #define MAX_FILENAME_LEN 128
-#define MAX_HEADER_LEN 8192  //test scenario for pipeline uses 128
+#define MAX_HEADER_LEN 8192  //test scenario for incomplete request uses 128
 #define MAX_LEN 8192
 #define MAX_CLIENTS 1024
 #define MAX_HOSTNAME 512
@@ -65,8 +66,8 @@ cmd_line_args cla; // global scope
 /*
  * the client struct that stores the details of the client
  *
- * most variables of the single char datatype are designed as boolean
- * flag variables that will only switch between values 0(false) and 1(true)
+ * most variables of the single char datatype are used as boolean flag
+ * variables that will only switch between values 0(false) and 1(true)
  *
  * "inbuf" is the internal buffer that stores the http request of the client
  *
@@ -76,10 +77,10 @@ cmd_line_args cla; // global scope
  *
  * "ssl_connection" is a flag variable that indicates whether the client is
  * using an ssl connection or not when connecting to the server. This is
- * necessary for me to be able to wrap the connection with the ssl API.
+ * necessary for me to be able to wrap the connection with the SSL API.
  *
  * "request_incomplete" is a variable that saves the state of a client when the
- * server receives a pipelined request from it. When a request is pipelined,
+ * server receives a incomplete request from it. When a request is incomplete,
  * the server does not receive the whole request in a single read from the
  * client socket, and thus i need a way to parse through the whole request
  * before i start working on the request
@@ -89,16 +90,16 @@ cmd_line_args cla; // global scope
  * 1 - request is incomplete and its a GET method
  * 2 - request is incomplete and its a HEAD method
  * 3 - request is incomplete and its a POST method
- * 4 - request is incomplete and its a CGI request with any method
+ * 4 - request is incomplete and its a CGI request with any method (deprecated)
  *
  */
 typedef struct {
     int sock;
     struct sockaddr_in cliaddr;
     unsigned int inbuf_size;
-    char request_incomplete; //int
-    char close_connection; //int
+    char close_connection;
     char ssl_connection;
+    char request_incomplete;
     char incomplete_request_buffer[MAXLINE];
     char hostname[MAX_HOSTNAME];
     char inbuf[MAX_LEN];
