@@ -6,9 +6,9 @@ def main(): # NEW except for the call to processInput
     form = cgi.FieldStorage()      # standard cgi script lines to here!
     
     # use format of next two lines with YOUR names and default data
-    numStr1 = form.getfirst("x", "0") # get the form value associated with form
+    numStr1 = form.getfirst("m", "0") # get the form value associated with form
                                    # name 'x'.  Use default "0" if there is none. 
-    numStr2 = form.getfirst("y", "0") # similarly for name 'y'
+    numStr2 = form.getfirst("n", "0") # similarly for name 'y'
     contents = processInput(numStr1, numStr2)   # process input into a page
     print(contents)
     
