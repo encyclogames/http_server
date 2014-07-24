@@ -56,7 +56,7 @@ init_ssl_listen_socket(int https_port)
 	struct sockaddr_in addr;
 	int on = 1;
 
-	bzero(&addr, sizeof(addr));
+	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(https_port);
 	addr.sin_addr.s_addr = INADDR_ANY;
@@ -180,14 +180,14 @@ void accept_ssl_client(int listen_sock, client_pool *p)
 }
 
 
-int read_from_ssl_client(client *c, client_pool *p, char* inbuf, int numbytes)
+int read_from_ssl_client(client *c, char* inbuf, int numbytes)
 {
 	//printf("START SSL READ FROM SOCKET %d\n",c->sock);
 	char buffer[MAX_LEN];
 	memset(buffer, 0, MAX_LEN);
 	int readbytes = 0, final_readbytes = 0;
 	int readbyte_limit = numbytes; // MAX_LEN
-	int read_blocked = 0,offset = 0;
+	int read_blocked = 0;
 	long err_val;
 	char err_string[MAXLINE];
 	char* http_end;
@@ -212,9 +212,6 @@ int read_from_ssl_client(client *c, client_pool *p, char* inbuf, int numbytes)
 
 	/////////////////////////////////////////////
 
-
-	////////////////// MUCH IMPROVED VERSION
-	//////////////////  NOTE: DOES NOT HAVE ECHO SUPPORT FOR PYTHON TEST
 	do{
 		do {
 			read_blocked=0;
@@ -252,11 +249,10 @@ int read_from_ssl_client(client *c, client_pool *p, char* inbuf, int numbytes)
 		final_readbytes += readbytes;
 		readbyte_limit -= readbytes;
 		http_end = strstr(inbuf, "\r\n\r\n");
-	} while ((http_end == NULL) && (final_readbytes < numbytes)); // MAX_LEN
+	} while ((http_end == NULL) && (final_readbytes < numbytes));
 	//	printf("got out of do loop when ssl read finished for client %d\n",
 	//			temp_ssl->sock);
-	//	printf("stats %d\n",
-	//			readbytes);
+	//	printf("stats num %d read %d\n", numbytes, readbytes);
 
 	return final_readbytes;
 }
