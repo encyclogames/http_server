@@ -9,18 +9,20 @@
 
 #include "lisod.h"
 #include "handler.h"
+#include "ssl_handler.h"
 
-// auxiliary values to help indicate the pipe fd being read
+// auxiliary values to help indicate the pipe end being read
 #define READ_END 0
 #define WRITE_END 1
 
-typedef struct {
+typedef struct cgi_client_s{
 	pid_t child_pid;		// pid of the execed child process
 	int client_sock;		// the client socket that expects the response
 //    char cgi_buf[MAX_LEN];
 //    unsigned int cgi_buf_size;
     int pipe_parent2child[2]; 	// child_stdin pipe
     int pipe_child2parent[2];	// child_stdout pipe
+    struct cgi_client_s *next;
     /*
      * pipe notes:
      * read from 0, write to 1
@@ -35,11 +37,13 @@ typedef struct {
      */
 } cgi_client;
 
+cgi_client* cgi_client_list;
+
 
 int handle_cgi_request(client *c, char *uri);
 
-/* this function sets up the common environmental variables for the cgiscript
- */
+// sets up some basic CGI environmental variables for the cgi script
+// returns -1 if there is any error, returns 0 otherwise
 int set_env_vars(client *c, char* uri);
 
 /* sets the HTTP-Specific environmental-Variables for the cgi script by
@@ -53,10 +57,25 @@ int set_env_vars(client *c, char* uri);
 int set_http_env_vars(client *c); //
 
 
-// returns -1 if fails, success returns 0
+/* sets the env vars that relate to the uri
+ * it will also try to see if the uri points to a cgi script that exists
+ * on the server or not,
+ * returns -1 if fails, success returns 0
+ */
 int set_env_vars_from_uri(char *uri);
 
+// Malloc a cgi_client struct to be used for a client with a cgi request
+cgi_client * new_cgi_client(int sock);
+
+/* handles the forking and execution of the cgi script and also the passing of
+ * the message body to it through the pipe. If the cgi script fails to run for
+ * any reason, the function will respond with an http error and return -1.
+ * success returns 0
+ */
+int cgi_child_process_creator(client *c, char *message_body,
+		int content_length, cgi_client *cgi_client_struct);
 
 
+void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p);
 
 #endif /* CGI_HANDLER_H_ */

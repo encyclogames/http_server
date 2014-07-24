@@ -10,12 +10,12 @@
 extern char **environ;
 
 /**************** BEGIN CONSTANTS ***************/
-#define FILENAME "./cgi_script.py"
+#define FILENAME_G "./cgi_script.py"
 #define BUF_SIZE 4096
 
 /* note: null terminated arrays (null pointer) */
-char* ARGV[] = {
-		FILENAME,
+char* ARGV_G[] = {
+		FILENAME_G,
 		NULL
 };
 
@@ -59,18 +59,19 @@ int handle_cgi_request(client *c, char *uri)
 {
 	char *request_end = NULL;
 	char *message_body = NULL;
-	int content_length = 0, request_length = 0;
-	printf("inside handle cgi req function\n");
-	printf("got these args\n");
-	printf("client inbuf:%sEND\n", c->inbuf);
+	char *message_body_buffer = NULL;
+	char *inbufptr = NULL;
+	int content_length = 0, request_length = 0, nread = 0;
+	int received_message_body_length = 0, bytes_to_read = 0;
+	//	printf("cgi client inbuf:%sEND\n", c->inbuf);
 	printf("uri:%sEND\n", uri);
 
 	request_end = strstr(c->inbuf, "\r\n\r\n");
-	message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
 	// first check to see whether we have an incomplete request or not
 	if (request_end != NULL)
 	{
 		c->request_incomplete = 0;
+		message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
 	}
 	// buffer does not contain "\r\n\r\n"
 	else
@@ -81,46 +82,117 @@ int handle_cgi_request(client *c, char *uri)
 		return 1;
 	}
 
-	printf("testing\n");
-	//	if (set_env_vars(c, uri) == 1)
-	//		return 1;
+	if (set_env_vars(c, uri) == -1)
+		return 1;
 
-	// need to put into function that does http request parsing
-	// and setting the http env vars
-	content_length = set_http_env_vars(c); // check return value for content length
+	content_length = set_http_env_vars(c);
 
+	// START message body buffering
 	if (content_length != 0)
 	{
-		printf("size:%d\nD : %d\n", c->inbuf_size, message_body - c->inbuf);
+		printf("full size:%d\nreq len : %d\n", c->inbuf_size, message_body - c->inbuf);
 		request_length = message_body - c->inbuf;
-		if (c->inbuf_size - request_length < content_length)
+		received_message_body_length = c->inbuf_size - request_length;
+		printf("mes bdy len : %d\n", received_message_body_length);
+
+		// prepare message body into new buffer to be written to exec child
+		message_body_buffer = malloc(content_length);
+		if (message_body_buffer == NULL)
+		{
+			http_error( c, "Error in mallocing msg_body_buffer", "500",
+					"Internal Server Error",
+					"An internal server error has occurred ",
+					CLOSE_CONN, SEND_HTTP_BODY);
+			return 1;
+		}
+		memset(message_body_buffer, 0, content_length);
+		memcpy(message_body_buffer, message_body, received_message_body_length);
+
+		if ( received_message_body_length < content_length)
 		{
 			// the client buffer does not have the complete message body
-			// so we read more from the client socket
-		}
-		else
-		{
-			// the client buffer has the whole message body in it already
-			// prepare it into new buffer to be written to exec child
-		}
+			// so we read the remaining bytes from the client socket
+			bytes_to_read = content_length - received_message_body_length;
+			c->inbuf_size = 0;
+			memset(c->inbuf, 0, sizeof(c->inbuf));
+			inbufptr = c->inbuf;
 
+			if (c->ssl_connection == 1)
+			{
+				nread = read_from_ssl_client(c, inbufptr, bytes_to_read);
+				memcpy(message_body_buffer + received_message_body_length,
+						c->inbuf, nread);
+				//printf("out of ssl read in cgi handler: %sEND\n", inbufptr);
+			}
+			else
+			{
+				// keep reading until we get the whole message body
+				while (nread < bytes_to_read)
+				{
+					nread = read(c->sock, c->inbuf, bytes_to_read);
+					if (nread == -1)
+					{
+						if (errno == EAGAIN || errno == EWOULDBLOCK)
+						{
+							nread = 0;
+							continue;
+						}
+						else
+						{
+							http_error( c, "Error in reading message body from client",
+									"500", "Internal Server Error",
+									"An internal server error has occurred ",
+									CLOSE_CONN, SEND_HTTP_BODY);
+							return 1;
+						}
 
+					}
+					memcpy(message_body_buffer + received_message_body_length,
+							c->inbuf, nread);
+					received_message_body_length += nread;
+					bytes_to_read -= nread;
+					nread = 0; // reset for next read
+					inbufptr = c->inbuf;
+				}
+				//printf("out of basic read in cgi handler: %sEND\n", inbufptr);
+			}
+		}
+	} // END message body buffering
+
+	cgi_client* cgiobj = new_cgi_client(c->sock);
+	if (cgiobj == NULL)
+	{
+		http_error( c, "Error in setting up cgi struct backend", "500",
+				"Internal Server Error",
+				"An internal server error has occurred ",
+				CLOSE_CONN, SEND_HTTP_BODY);
+		return 1;
 	}
+	LL_APPEND(cgi_client_list, cgiobj);
+
+	// TO DO: write function to setup/exec child cgi using the cgi client obj
+	cgi_child_process_creator(c, message_body_buffer, content_length, cgiobj);
+
+
+
+
 
 
 
 
 
 	// finished getting all env vars set
-	int i=0;
 	char remote_addr[22] = "REMOTE_ADDR=";
 	char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
 	strcat(remote_addr, client_ip);
 	printf("%s\nLIST OF ENVP:\n",remote_addr);
-	//	while(environ[i])
-	//	{
-	//		printf("%s\n", environ[i++]);
-	//	}
+	int i=0;
+	while(environ[i])
+	{
+		if (i>40)
+			printf("%s\n", environ[i]);
+		i++;
+	}
 	printf("END\n");
 
 
@@ -188,37 +260,77 @@ int set_env_vars(client *c, char *uri)
 
 int set_env_vars_from_uri(char *uri)
 {
+	printf("folder:%s script:%s\n", cla.cgi_folder, cla.cgi_script);
+
+	// keep these uris as tests for parsing and move them to a python test later
+	// char uri[] = "http://yourserver/www/cgi/search.cgi/misc/movies.mdb?sgi";
+	// char uri[] = "http://localhost:8080/examples/www/cgi/HelloWorld/hello+there/fred";
 	char uri_copy[MAXLINE] = "";
 	char *path_info;
+	char *script_name = NULL;
 	strcpy(uri_copy, uri);
 
+	char *query_string = strstr(uri, "?");
+	if (query_string != NULL)
+	{
+		// skip the question mark char indicating start of query string
+		setenv("QUERY_STRING",query_string+1,1);
+		*query_string = '\0';
+	}
+	else
+	{
+		// clear query string for current cgi request since it might have
+		// existing info set in it from the previous handled cgi request
+		unsetenv("QUERY_STRING");
+	}
+
 	setenv("REQUEST_URI",uri,1);
-	if (strlen(cla.cgi_script) == 0) // if we have a cgi folder
+	//	if (strlen(cla.cgi_script) == 0) // if we have a cgi folder
+	//	{
+	//		script_name = strstr(uri, cla.cgi_folder);
+	//		if (script_name == NULL)
+	//		{
+	//			// cgi folder not found in uri, so cannot proceed with request
+	//			return -1;
+	//		}
+	//		else
+	//		{
+	//			// the one at the end skips the script name in the path
+	//			path_info = strstr(script_name+strlen(cla.cgi_folder)+1, "/");
+	//
+	//			setenv("PATH_INFO",path_info,1);
+	//			*path_info = '\0';
+	//			setenv("SCRIPT_NAME",script_name,1);
+	//		}
+	//	}
+	//	else // the cgi script is hardcoded to be in "/cgi"
+	//	{
+	//		script_name = strstr(uri, cla.cgi_script);
+	script_name = strstr(uri, "/cgi/");
+	if (script_name == NULL)
 	{
-		setenv("SCRIPT_NAME",cla.cgi_folder,1);
-		if (strncmp(uri, cla.cgi_folder, strlen(cla.cgi_folder)) == 0)
-		{
-			path_info = uri+strlen(cla.cgi_folder);
-		}
-		else // cgi folder not found in uri, so cannot proceed with request
-			return -1;
+		// uri does not have proper cgi script location
+		// so cannot proceed with request
+		return -1;
 	}
-	else // the cgi script is hardcoded to be in "/cgi"
+	else
 	{
-		setenv("SCRIPT_NAME","/cgi",1);
-		if (strncmp(uri, "/cgi/", 5) == 0)
+		path_info = strstr(script_name+strlen("/cgi/")+1, "/");
+		if (path_info == NULL)
 		{
-			path_info = uri+5;
+			unsetenv("PATH_INFO");
+
 		}
-		else // uri does not have proper cgi script location
-			// so cannot proceed with request
-			return -1;
+		else
+		{
+			//			setenv("SCRIPT_NAME","/cgi",1);
+			setenv("PATH_INFO",path_info,1);
+			*path_info = '\0';
+			//		setenv("SCRIPT_NAME",cla.cgi_script,1);
+		}
+		setenv("SCRIPT_NAME",script_name,1);
 	}
-
-	char *query_string = strstr(uri, "?")+1;
-	setenv("PATH_INFO",path_info,1);
-	setenv("QUERY_STRING",query_string,1);
-
+	//	}
 	return 0;
 }
 
@@ -297,7 +409,50 @@ int set_http_env_vars(client *c)
 	return content_length;
 }
 
+cgi_client *
+new_cgi_client(int sock)
+{
+	cgi_client *nc = NULL;
 
+	nc = malloc(sizeof(cgi_client));
+
+	if (nc == NULL)
+	{
+		printf("malloc failed for cgi_client\n");
+		return nc;
+	}
+	memset(nc, 0, sizeof(cgi_client));
+	nc->child_pid = 0;
+	nc->client_sock = sock;
+	memset(nc->pipe_parent2child, 0, 2 * sizeof(int));
+	memset(nc->pipe_child2parent, 0, 2 * sizeof(int));
+	nc->next = NULL;
+
+	if (pipe(nc->pipe_parent2child) < 0)
+	{
+		fprintf(stderr, "Error creating pipe for parent2child.\n");
+		return NULL;
+	}
+
+	if (pipe(nc->pipe_child2parent) < 0)
+	{
+		fprintf(stderr, "Error creating pipe for child2parent.\n");
+		return NULL;
+	}
+
+	return nc;
+}
+
+void set_cgi_child_fds()
+{
+
+
+}
+
+void print_cgi_child_list()
+{
+
+}
 
 ///////////// END SELF CODE
 
@@ -391,93 +546,249 @@ processes.\n");
 
 
 
-int run_main(int argc, char * argv[])
+//int run_main(int argc, char * argv[])
+//{
+//	/*************** BEGIN VARIABLE DECLARATIONS **************/
+//	pid_t pid;
+//	int stdin_pipe[2];
+//	int stdout_pipe[2];
+//	char buf[BUF_SIZE];
+//	int readret;
+//	/*************** END VARIABLE DECLARATIONS **************/
+//
+//	/*************** BEGIN PIPE **************/
+//	/* 0 can be read from, 1 can be written to */
+//	if (pipe(stdin_pipe) < 0)
+//	{
+//		fprintf(stderr, "Error piping for stdin.\n");
+//		return EXIT_FAILURE;
+//	}
+//
+//	if (pipe(stdout_pipe) < 0)
+//	{
+//		fprintf(stderr, "Error piping for stdout.\n");
+//		return EXIT_FAILURE;
+//	}
+//	/*************** END PIPE **************/
+//
+//	/*************** BEGIN FORK **************/
+//	pid = fork();
+//	/* not good */
+//	if (pid < 0)
+//	{
+//		fprintf(stderr, "Something really bad happened when fork()ing.\n");
+//		return EXIT_FAILURE;
+//	}
+//
+//	/* child, setup environment, execve */
+//	if (pid == 0)
+//	{
+//		/*************** BEGIN EXECVE ****************/
+//		close(stdout_pipe[0]);
+//		close(stdin_pipe[1]);
+//		dup2(stdout_pipe[1], fileno(stdout));
+//		dup2(stdin_pipe[0], fileno(stdin));
+//		/* you should probably do something with stderr */
+//
+//		/* pretty much no matter what, if it returns bad things happened... */
+//		if (execve(FILENAME, ARGV, ENVP))
+//		{
+//			execve_error_handler();
+//			fprintf(stderr, "Error executing execve syscall.\n");
+//			return EXIT_FAILURE;
+//		}
+//		/*************** END EXECVE ****************/
+//	}
+//
+//	if (pid > 0)
+//	{
+//		fprintf(stdout, "Parent: Heading to select() loop.\n");
+//		close(stdout_pipe[1]);
+//		close(stdin_pipe[0]);
+//
+//		if (write(stdin_pipe[1], POST_BODY, strlen(POST_BODY)) < 0)
+//		{
+//			fprintf(stderr, "Error writing to spawned CGI program.\n");
+//			return EXIT_FAILURE;
+//		}
+//
+//		close(stdin_pipe[1]); /* finished writing to spawn */
+//
+//		/* you want to be looping with select() telling you when to read */
+//		while((readret = read(stdout_pipe[0], buf, BUF_SIZE-1)) > 0)
+//		{
+//			buf[readret] = '\0'; /* nul-terminate string */
+//			fprintf(stdout, "Got from CGI: %s\n", buf);
+//		}
+//
+//		close(stdout_pipe[0]);
+//		close(stdin_pipe[1]);
+//
+//		if (readret == 0)
+//		{
+//			fprintf(stdout, "CGI spawned process returned with EOF as expected.\n");
+//			return EXIT_SUCCESS;
+//		}
+//	}
+//	/*************** END FORK **************/
+//
+//	fprintf(stderr, "Process exiting, badly...how did we get here!?\n");
+//	return EXIT_FAILURE;
+//}
+
+
+int cgi_child_process_creator(client *c, char *message_body,
+		int content_length, cgi_client *cgi_client_struct)
 {
 	/*************** BEGIN VARIABLE DECLARATIONS **************/
-	pid_t pid;
-	int stdin_pipe[2];
-	int stdout_pipe[2];
-	char buf[BUF_SIZE];
-	int readret;
+
+	/*
+	 * int pipe_parent2child[2]; 	// child_stdin pipe
+	 * int pipe_child2parent[2];	// child_stdout pipe
+	 *
+	 * pipe notes:
+	 * read from 0, write to 1
+	 * child closes stdin[1] and stdout[0]
+	 * parent closes stdin[0] and stdout[1]
+	 *
+	 * parent writes to stdin[1] to pass to child
+	 * child writes stdout[1] to write to parent
+	 *
+	 * parent should select on stdout[0] and shld close stdin[1]
+	 * when finished writing to child or u have fd leak
+	 */
+
 	/*************** END VARIABLE DECLARATIONS **************/
 
-	/*************** BEGIN PIPE **************/
-	/* 0 can be read from, 1 can be written to */
-	if (pipe(stdin_pipe) < 0)
-	{
-		fprintf(stderr, "Error piping for stdin.\n");
-		return EXIT_FAILURE;
-	}
-
-	if (pipe(stdout_pipe) < 0)
-	{
-		fprintf(stderr, "Error piping for stdout.\n");
-		return EXIT_FAILURE;
-	}
-	/*************** END PIPE **************/
 
 	/*************** BEGIN FORK **************/
-	pid = fork();
+	cgi_client_struct->child_pid = fork();
 	/* not good */
-	if (pid < 0)
+	if (cgi_client_struct->child_pid < 0)
 	{
 		fprintf(stderr, "Something really bad happened when fork()ing.\n");
-		return EXIT_FAILURE;
+		http_error( c, "CGI fork failed", "500",
+				"Internal Server Error",
+				"An internal server error has occurred ",
+				CLOSE_CONN, SEND_HTTP_BODY);
+		LL_DELETE(cgi_client_list, cgi_client_struct);
+		return -1;
 	}
 
 	/* child, setup environment, execve */
-	if (pid == 0)
+	if (cgi_client_struct->child_pid == 0)
 	{
 		/*************** BEGIN EXECVE ****************/
-		close(stdout_pipe[0]);
-		close(stdin_pipe[1]);
-		dup2(stdout_pipe[1], fileno(stdout));
-		dup2(stdin_pipe[0], fileno(stdin));
+		close(cgi_client_struct->pipe_child2parent[READ_END]);
+		close(cgi_client_struct->pipe_parent2child[WRITE_END]);
+		dup2(cgi_client_struct->pipe_child2parent[WRITE_END], fileno(stdout));
+		dup2(cgi_client_struct->pipe_parent2child[READ_END], fileno(stdin));
 		/* you should probably do something with stderr */
 
+		char *script_name = getenv("SCRIPT_NAME");
+		printf("in child script name from env %s\n", script_name);
+		// need to fix this, since in child stdout does not makes sense
+		if (script_name == NULL)
+		{
+			http_error( c, "Script name setting failed", "500",
+					"Internal Server Error",
+					"An internal server error has occurred ",
+					CLOSE_CONN, SEND_HTTP_BODY);
+			LL_DELETE(cgi_client_list, cgi_client_struct);
+			return -1;
+		}
+		char filename[MAX_FILENAME_LEN];
+		memset(filename, 0, MAX_FILENAME_LEN);
+
+		if (strlen(cla.cgi_script) != 0)
+		{
+			strcpy(filename, cla.cgi_script);
+		}
+		else
+		{
+			//			strcat(filename, "./cgi/");
+			strcat(filename, ".");
+			if (*script_name != '/')
+				strcat(filename, "/");
+			strcat(filename, script_name);
+		}
+		char* argv_child[] = {filename,NULL};
+
 		/* pretty much no matter what, if it returns bad things happened... */
-		if (execve(FILENAME, ARGV, ENVP))
+		if (execve(filename, argv_child, environ))
 		{
 			execve_error_handler();
 			fprintf(stderr, "Error executing execve syscall.\n");
-			return EXIT_FAILURE;
+			return -1;
 		}
 		/*************** END EXECVE ****************/
 	}
 
-	if (pid > 0)
+	if (cgi_client_struct->child_pid > 0)
 	{
 		fprintf(stdout, "Parent: Heading to select() loop.\n");
-		close(stdout_pipe[1]);
-		close(stdin_pipe[0]);
+		close(cgi_client_struct->pipe_child2parent[WRITE_END]);
+		close(cgi_client_struct->pipe_parent2child[READ_END]);
 
-		if (write(stdin_pipe[1], POST_BODY, strlen(POST_BODY)) < 0)
+		if (write(cgi_client_struct->pipe_parent2child[WRITE_END],
+				message_body, content_length) < 0)
 		{
 			fprintf(stderr, "Error writing to spawned CGI program.\n");
-			return EXIT_FAILURE;
+			return -1;
 		}
 
-		close(stdin_pipe[1]); /* finished writing to spawn */
+		/* finished writing to spawn */
+		close(cgi_client_struct->pipe_parent2child[WRITE_END]);
 
-		/* you want to be looping with select() telling you when to read */
-		while((readret = read(stdout_pipe[0], buf, BUF_SIZE-1)) > 0)
-		{
-			buf[readret] = '\0'; /* nul-terminate string */
-			fprintf(stdout, "Got from CGI: %s\n", buf);
-		}
+		// return success so the child read fd
+		return cgi_client_struct->pipe_child2parent[READ_END];
 
-		close(stdout_pipe[0]);
-		close(stdin_pipe[1]);
-
-		if (readret == 0)
-		{
-			fprintf(stdout, "CGI spawned process returned with EOF as \
-expected.\n");
-			return EXIT_SUCCESS;
-		}
 	}
 	/*************** END FORK **************/
 
 	fprintf(stderr, "Process exiting, badly...how did we get here!?\n");
-	return EXIT_FAILURE;
+	return -1;
 }
+
+void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
+{
+	//	cgi_client *temp_cgi;
+	//	LL_SEARCH_SCALAR(cgi_client_list,temp_cgi,
+	//			pipe_child2parent[READ_END],cgi_response_fd);
+
+	printf("accessing client from pool in transfer func");
+	client *c = p->clients[temp_cgi->client_sock];
+	printf("got it\n");
+
+	char buf[MAX_LEN];
+	int readret, status;
+
+
+	/* you want to be looping with select() telling you when to read */
+	while((readret = read(temp_cgi->pipe_child2parent[READ_END],
+			buf, MAX_LEN-1)) > 0)
+	{
+		buf[readret] = '\0'; /* nul-terminate string */
+		fprintf(stdout, "Got from CGI: %s\n", buf);
+		if (c->ssl_connection == 0)
+		{
+			write(temp_cgi->client_sock, buf, strlen(buf));
+		}
+		else
+		{
+			write_to_ssl_client(c, buf, strlen(buf));
+		}
+	}
+
+	close(temp_cgi->pipe_child2parent[READ_END]);
+	close(temp_cgi->pipe_parent2child[WRITE_END]);
+
+	if (readret == 0)
+	{
+		fprintf(stdout, "CGI spawned process returned with EOF as expected.\n");
+		//		return EXIT_SUCCESS;
+		waitpid(temp_cgi->child_pid, &status, WNOHANG);
+
+	}
+}
+
