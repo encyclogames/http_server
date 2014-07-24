@@ -1,8 +1,4 @@
 #include "client_pool.h"
-//#include <stdlib.h>
-//#include <assert.h>
-//#include <string.h>
-//#include <stdio.h>
 
 client *
 new_client(client_pool *p, int sock)
@@ -11,7 +7,7 @@ new_client(client_pool *p, int sock)
 	assert(p->clients[sock] == NULL);
 
 	nc = malloc(sizeof(client));
-	bzero(nc, sizeof(client));
+	memset(nc, 0, sizeof(client));
 	nc->sock = sock;
 	nc->inbuf_size = 0;
 	nc->request_incomplete = 0;
