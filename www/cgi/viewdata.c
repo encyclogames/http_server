@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#define DATAFILE "./data.txt"
+//#define DATAFILE "./data.txt"
+#define DATAFILE "./www/cgi/data.txt"
 int main(void)
 {
 FILE *f = fopen(DATAFILE,"r");

@@ -4,6 +4,7 @@
 *.crt
 *.key
 *~
+data.txt
 
 # Compiled source #
 ###################

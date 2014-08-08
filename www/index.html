@@ -18,9 +18,9 @@
     </body>
 
 <form action="./www/cgi/adder.cgi" method="get">
-<div><label>Multiplicand 1: <input name="m" size="5"></label></div>
-<div><label>Multiplicand 2: <input name="n" size="5"></label></div>
-<div><input type="submit" value="Multiply!"></div>
+<div><label>Number 1: <input name="m" size="5"></label></div>
+<div><label>Number 2: <input name="n" size="5"></label></div>
+<div><input type="submit" value="ADD!"></div>
 </form>
 
 <FORM ACTION="./www/cgi/collect.cgi" METHOD="POST">
@@ -29,8 +29,22 @@
 <INPUT TYPE="SUBMIT" VALUE="Send"></DIV>
 </FORM>
 
-<form action="/cgi/hellotxt.cgi" method="get">
-<div><input type="submit" value="Multiply!"></div>
+<form action="/cgi/viewdata.cgi" method="get">
+<div><input type="submit" value="View collect"></div>
+</form>
+
+<br><br>
+
+<form action="/cgi/get_env.py" method="get">
+<div><input type="submit" value="Show Env"></div>
+</form>
+
+<form action="/cgi/now.cgi" method="get">
+<div><input type="submit" value="Date"></div>
+</form>
+
+<form action="/cgi/test.cgi" method="get">
+<div><input type="submit" value="Perl ENV"></div>
 </form>
 
 </html>

@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #define MAXLEN 80
 #define EXTRA 5
 /* 4 for field name "data", 1 for "=" */
 #define MAXINPUT MAXLEN+EXTRA+2
 /* 1 for added line break, 1 for trailing NUL */
-#define DATAFILE "./data.txt"
+#define DATAFILE "./www/cgi/data.txt"
 
 
 void unencode(char *src, char *last, char *dest)
@@ -29,6 +30,8 @@ int main(void)
 char *lenstr;
 char input[MAXINPUT], data[MAXINPUT];
 long len;
+int ret;
+int errnum;
 printf("%s%c%c\n",
 "Content-Type:text/html;charset=iso-8859-1",13,10);
 printf("<TITLE>Response</TITLE>\n");
@@ -43,7 +46,21 @@ else {
   if(f == NULL)
     printf("<P>Sorry, cannot store your data.");
   else
-    fputs(data, f);
+  {
+//    ret = fputs(data, f);
+      ret = fprintf(f, "%s", data);
+  }
+//  if (ret == EOF)
+  if (ret > 0)
+    printf("got eof from ret %d GOOD<br>", ret);
+  else
+  {
+    printf("got error from ret BAD<br>");
+    errnum = errno;
+    fprintf(stderr, "Value of errno: %d\n", errno);
+    perror("Error printed by perror");
+    fprintf(stderr, "Error opening file: %s\n", strerror( errnum ));
+  }
   fclose(f);
   printf("<P>Thank you! The following contribution of yours has \
 been stored:<BR>%s",data);

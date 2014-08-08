@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 import time
-print("Content-Type: text/html\n\n")  # html markup follows
+print("Content-Type: text/html\r\n")  # html markup follows
+print("Content-Length: 150\r\n\r\n")
 
 timeStr = time.strftime("%c") # obtains current time
 
