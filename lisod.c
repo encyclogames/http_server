@@ -203,8 +203,12 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 		// pipe_child2parent[READ_END]
 
 		// go through ssl client list and set socket in read fd
+		i = 0;
 		LL_FOREACH(cgi_client_list, cgi_itr)
 		{
+//			printf("printing child fd in select %d.\n",
+//					cgi_itr->pipe_child2parent[READ_END]);
+//			printf("%d",i++);
 			FD_SET(cgi_itr->pipe_child2parent[READ_END], &readfds);
 			if (cgi_itr->pipe_child2parent[READ_END] > maxfd)
 				maxfd = cgi_itr->pipe_child2parent[READ_END];
@@ -217,8 +221,10 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 				perror("Select error, bad file descriptor in sets");
 			else if (errno == EINTR)
 				perror("Select was interrupted by signal");
-			//exit(EXIT_FAILURE); // graceful reset
-			continue;
+
+			// NOTE: remember to replace this with graceful shutdown
+			exit(EXIT_FAILURE); // graceful reset
+//			continue;
 		}
 
 		if (FD_ISSET(http_sock, &readfds))
@@ -476,7 +482,8 @@ void handle_input(client *c, client_pool *p)
 		int count = 0;
 		LL_FOREACH(cgi_client_list,temp_cgi)
 		{
-			printf("cgi in isset %d\n", temp_cgi->client_sock);
+			printf("cgi in isset %d %d\n", temp_cgi->client_sock,
+					temp_cgi->pipe_child2parent[READ_END]);
 			count++;
 		}
 		printf("finished printing socks of cgiclients count = %d\n",count);
