@@ -14,40 +14,38 @@ extern char **environ;
 #define BUF_SIZE 4096
 
 /* note: null terminated arrays (null pointer) */
-char* ARGV_G[] = {
-		FILENAME_G,
-		NULL
-};
-
-char* ENVP_G[] = {
-		/*1*/   "CONTENT_LENGTH=",
-		/*2*/	"CONTENT-TYPE=",
-		/*3*/	"GATEWAY_INTERFACE=CGI/1.1",
-		/*4*/	"PATH_INFO=",
-		/*5*/	"QUERY_STRING=action=opensearch&search=HT&namespace=0&suggest=",
-		/*6*/	"REMOTE_ADDR=128.2.215.22",
-		/*7*/	"REMOTE_HOST=gs9671.sp.cs.cmu.edu", // not needed, so might remove it
-		/*8*/	"REQUEST_METHOD=GET",
-		/*9*/	"REQUEST_URI=",
-		/*10*/	"SCRIPT_NAME=/w/api.php",
-		/*11*/	"SERVER_NAME=",
-		/*12*/	"SERVER_PORT=80",
-		/*13*/	"SERVER_PROTOCOL=HTTP/1.1",
-		/*14*/	"SERVER_SOFTWARE=Liso/1.0",
-		/*15*/	"HOST_NAME=en.wikipedia.org",
-		/*16*/	"HTTP_ACCEPT=/application/json, text/javascript, */*; q=0.01",
-		/*17*/	"HTTP_REFERER=http://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=test+wikipedia+search",
-		/*18*/	"HTTP_ACCEPT_ENCODING=gzip,deflate,sdch",
-		/*19*/	"HTTP_ACCEPT_LANGUAGE=en-US,en;q=0.8",
-		/*20*/	"HTTP_ACCEPT_CHARSET=ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-		/*21*/	"HTTP_COOKIE=clicktracking-session=v7JnLVqLFpy3bs5hVDdg4Man4F096mQmY; mediaWiki.user.bucket%3Aext.articleFeedback-tracking=8%3Aignore; mediaWiki.user.bucket%3Aext.articleFeedback-options=8%3Ashow; mediaWiki.user.bucket:ext.articleFeedback-tracking=8%3Aignore; mediaWiki.user.bucket:ext.articleFeedback-options=8%3Ashow",
-		/*22*/	"HTTP_USER_AGENT=Mozilla/5.0 (X11; Linux i686) AppleWebKit/535.1 (KHTML, like Gecko) Chrome/14.0.835.186 Safari/535.1",
-		/*23*/	"HTTP_CONNECTION=keep-alive",
-		/*24*/	"HTTP_HOST=en.wikipedia.org",
-		/*25*/NULL
-};
-
-char *POST_BODY = "This is the stdin body...\n";
+//char* ARGV_G[] = {
+//		FILENAME_G,
+//		NULL
+//};
+//
+//char* ENVP_G[] = {
+//		/*1*/   "CONTENT_LENGTH=",
+//		/*2*/	"CONTENT-TYPE=",
+//		/*3*/	"GATEWAY_INTERFACE=CGI/1.1",
+//		/*4*/	"PATH_INFO=",
+//		/*5*/	"QUERY_STRING=action=opensearch&search=HT&namespace=0&suggest=",
+//		/*6*/	"REMOTE_ADDR=128.2.215.22",
+//		/*7*/	"REMOTE_HOST=gs9671.sp.cs.cmu.edu", // not needed, so might remove it
+//		/*8*/	"REQUEST_METHOD=GET",
+//		/*9*/	"REQUEST_URI=",
+//		/*10*/	"SCRIPT_NAME=/w/api.php",
+//		/*11*/	"SERVER_NAME=",
+//		/*12*/	"SERVER_PORT=80",
+//		/*13*/	"SERVER_PROTOCOL=HTTP/1.1",
+//		/*14*/	"SERVER_SOFTWARE=Liso/1.0",
+//		/*15*/	"HOST_NAME=en.wikipedia.org",
+//		/*16*/	"HTTP_ACCEPT=/application/json, text/javascript, */*; q=0.01",
+//		/*17*/	"HTTP_REFERER=http://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=test+wikipedia+search",
+//		/*18*/	"HTTP_ACCEPT_ENCODING=gzip,deflate,sdch",
+//		/*19*/	"HTTP_ACCEPT_LANGUAGE=en-US,en;q=0.8",
+//		/*20*/	"HTTP_ACCEPT_CHARSET=ISO-8859-1,utf-8;q=0.7,*;q=0.3",
+//		/*21*/	"HTTP_COOKIE=clicktracking-session=v7JnLVqLFpy3bs5hVDdg4Man4F096mQmY; mediaWiki.user.bucket%3Aext.articleFeedback-tracking=8%3Aignore; mediaWiki.user.bucket%3Aext.articleFeedback-options=8%3Ashow; mediaWiki.user.bucket:ext.articleFeedback-tracking=8%3Aignore; mediaWiki.user.bucket:ext.articleFeedback-options=8%3Ashow",
+//		/*22*/	"HTTP_USER_AGENT=Mozilla/5.0 (X11; Linux i686) AppleWebKit/535.1 (KHTML, like Gecko) Chrome/14.0.835.186 Safari/535.1",
+//		/*23*/	"HTTP_CONNECTION=keep-alive",
+//		/*24*/	"HTTP_HOST=en.wikipedia.org",
+//		/*25*/NULL
+//};
 /**************** END CONSTANTS ***************/
 
 
@@ -64,7 +62,7 @@ int handle_cgi_request(client *c, char *uri)
 	int content_length = 0, request_length = 0, nread = 0, ret_val = 0;
 	int received_message_body_length = 0, bytes_to_read = 0;
 	//	printf("cgi client inbuf:%sEND\n", c->inbuf);
-	printf("uri:%sEND\n", uri);
+//	printf("uri:%sEND\n", uri);
 
 	request_end = strstr(c->inbuf, "\r\n\r\n");
 	// first check to see whether we have an incomplete request or not
@@ -170,7 +168,7 @@ int handle_cgi_request(client *c, char *uri)
 	}
 	LL_APPEND(cgi_client_list, cgiobj);
 
-	// TO DO: write function to setup/exec child cgi using the cgi client obj
+	// Setup/exec child cgi using the cgi client obj
 	ret_val = cgi_child_process_creator(c, message_body_buffer, content_length, cgiobj);
 
 	if (ret_val == -1)
@@ -182,34 +180,11 @@ int handle_cgi_request(client *c, char *uri)
 		return 1;
 	}
 
-
-
-
-
-
-
-
-	// finished getting all env vars set
-	//	char remote_addr[22] = "REMOTE_ADDR=";
-	//	char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
-	//	strcat(remote_addr, client_ip);
-	//	printf("%s\nLIST OF ENVP:\n",remote_addr);
-	//	int i=0;
-	//	while(environ[i])
-	//	{
-	//		if (i>40)
-	//			printf("%s\n", environ[i]);
-	//		i++;
-	//	}
-	//	printf("END\n");
-
-
 	return 0;
 }
 
 int set_env_vars(client *c, char *uri)
 {
-//	unsetenv("LS_COLORS");
 	setenv("GATEWAY_INTERFACE","CGI/1.1",1);
 	setenv("SERVER_PROTOCOL","HTTP/1.1",1);
 	setenv("SERVER_SOFTWARE","Liso/1.0",1);
@@ -294,27 +269,6 @@ int set_env_vars_from_uri(char *uri)
 	}
 
 	setenv("REQUEST_URI",uri,1);
-	//	if (strlen(cla.cgi_script) == 0) // if we have a cgi folder
-	//	{
-	//		script_name = strstr(uri, cla.cgi_folder);
-	//		if (script_name == NULL)
-	//		{
-	//			// cgi folder not found in uri, so cannot proceed with request
-	//			return -1;
-	//		}
-	//		else
-	//		{
-	//			// the one at the end skips the script name in the path
-	//			path_info = strstr(script_name+strlen(cla.cgi_folder)+1, "/");
-	//
-	//			setenv("PATH_INFO",path_info,1);
-	//			*path_info = '\0';
-	//			setenv("SCRIPT_NAME",script_name,1);
-	//		}
-	//	}
-	//	else // the cgi script is hardcoded to be in "/cgi"
-	//	{
-	//		script_name = strstr(uri, cla.cgi_script);
 	script_name = strstr(uri, "/cgi/");
 	if (script_name == NULL)
 	{
@@ -328,25 +282,21 @@ int set_env_vars_from_uri(char *uri)
 		if (path_info == NULL)
 		{
 			unsetenv("PATH_INFO");
-
 		}
 		else
 		{
-			//			setenv("SCRIPT_NAME","/cgi",1);
 			setenv("PATH_INFO",path_info,1);
 			*path_info = '\0';
-			//		setenv("SCRIPT_NAME",cla.cgi_script,1);
 		}
 		setenv("SCRIPT_NAME",script_name,1);
 	}
-	//	}
+
 	return 0;
 }
 
 int set_http_env_vars(client *c)
 {
 	char *request_line;
-	//	char *last_request_line_read;
 	int content_length = 0;
 	//	char *message_body = strstr(c->inbuf, "\r\n\r\n")+4;
 	request_line = strtok(c->inbuf, "\r\n");
@@ -355,17 +305,17 @@ int set_http_env_vars(client *c)
 	while (request_line != NULL)
 	{
 		//		printf("iter %d\n",i++);
-		//		last_request_line_read = request_line;
 		if (strstr(request_line,"Connection:") != NULL)
 		{
 			if (strcmp(strstr(request_line,":")+2,"close") == 0)
+			{
 				c->close_connection = 1;
+			}
 			setenv("HTTP_CONNECTION",strstr(request_line,":")+2,1);
 		}
 		else if (strstr(request_line,"Accept:") != NULL)
 		{
 			setenv("HTTP_ACCEPT",strstr(request_line,":")+2,1);
-			//			printf("blah%sblah",strstr(request_line,":")+2);
 		}
 		else if (strstr(request_line,"Referer:") != NULL)
 		{
@@ -406,11 +356,7 @@ int set_http_env_vars(client *c)
 			printf("GOT CL:%d\n",content_length);
 		}
 
-
-		//		setenv("REMOTE_ADDR",client_ip,1);
-		//printf("Line %d : %s\n", i++, request_line);
-		//sscanf(request_line, "%s %s", header_name, header_value);
-		//printf("Line %d : %s %s\n", i++, header_name, header_value);
+//		printf("Line %d : %s\n", i++, request_line);
 		request_line = strtok(NULL, "\r\n");
 	}
 
@@ -452,17 +398,6 @@ new_cgi_client(int sock)
 	}
 
 	return nc;
-}
-
-void set_cgi_child_fds()
-{
-
-
-}
-
-void print_cgi_child_list()
-{
-
 }
 
 ///////////// END SELF CODE
@@ -694,15 +629,15 @@ int cgi_child_process_creator(client *c, char *message_body,
 
 		char script_name[MAX_FILENAME_LEN];
 		memset(script_name, 0, MAX_FILENAME_LEN);
-		char *script_name_p = getenv("SCRIPT_NAME");
-		strcpy(script_name, script_name_p);
-		fprintf(stderr, "in child script name from env %s\n", script_name);
+		char *script_name_env_ptr = getenv("SCRIPT_NAME");
+		strcpy(script_name, script_name_env_ptr);
+//		fprintf(stderr, "in child script name from env %s\n", script_name);
 		// need to fix this, since in child stdout does not makes sense
 		if (script_name == NULL)
 		{
-			log_into_file( "Script name setting failed");
+			log_into_file( "Script name setting failed from env");
 			LL_DELETE(cgi_client_list, cgi_client_struct);
-			return -1;
+			exit(EXIT_FAILURE);
 		}
 		char filename[MAX_FILENAME_LEN];
 		memset(filename, 0, MAX_FILENAME_LEN);
@@ -713,27 +648,24 @@ int cgi_child_process_creator(client *c, char *message_body,
 		}
 		else
 		{
-			//			strcat(filename, "./cgi/");
-
-			// OLD
-			//			strcat(filename, ".");
-			//			if (*script_name != '/')
-			//				strcat(filename, "/");
-			//			strcat(filename, script_name);
-
-			// NEW
 			strcat(filename, cla.cgi_folder);
-			//			script_name += 4;
-			script_name_p = script_name;
-			script_name_p += 4;
-			fprintf(stderr, "edited %s\n", script_name_p);
-			strcat(filename, script_name_p);
+			script_name_env_ptr = script_name;
+			if (filename[strlen(filename)-1] == '/')
+			{
+				script_name_env_ptr += 5; //skip the "/cgi/" in script name
+			}
+			else
+			{
+				script_name_env_ptr += 4; //skip the "/cgi" in script name
+			}
+//			fprintf(stderr, "edited %s\n", script_name_env_ptr);
+			strcat(filename, script_name_env_ptr);
 		}
 		char* argv_child[] = {filename,NULL};
 
 		/* pretty much no matter what, if it returns bad things happened... */
 		fprintf(stderr, "RUNNING file %s\n", filename);
-		if (execve(filename, argv_child, environ)) //ENVP_G
+		if (execve(filename, argv_child, environ))
 		{
 			execve_error_handler();
 			fprintf(stderr, "Error executing execve syscall.\n");
@@ -772,13 +704,8 @@ int cgi_child_process_creator(client *c, char *message_body,
 
 void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 {
-	//	cgi_client *temp_cgi;
-	//	LL_SEARCH_SCALAR(cgi_client_list,temp_cgi,
-	//			pipe_child2parent[READ_END],cgi_response_fd);
-
-	printf("accessing client from pool in transfer func  ");
 	client *c = p->clients[temp_cgi->client_sock];
-	printf("got it\n");
+	//	printf("got it from client pool using cgi obj\n");
 
 	char buf[MAX_LEN];
 	int readret, status;
@@ -809,16 +736,14 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 			write_to_ssl_client(c, buf, strlen(buf));
 		}
 	}
-	printf("CGI readert finished with %d.\n", readret);
+//	printf("CGI readert finished with %d.\n", readret);
 
 	close(temp_cgi->pipe_child2parent[READ_END]);
 	close(temp_cgi->pipe_parent2child[WRITE_END]);
 
 	if (readret == 0)
 	{
-//		return;
 		fprintf(stdout, "CGI spawned process returned with EOF as expected.\n");
-		//		return EXIT_SUCCESS;
 //		waitpid(temp_cgi->child_pid, &status, WNOHANG);
 //		status = WEXITSTATUS(status);
 
@@ -826,7 +751,8 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 		printf("waited on child after transfer finished\n");
 		LL_DELETE(cgi_client_list, temp_cgi);
 		free(temp_cgi);
-
 	}
+
+	// TO DO: check code for faulty read/broken pipe/incomplete child response
 }
 
