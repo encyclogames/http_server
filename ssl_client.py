@@ -27,7 +27,8 @@ pprint.pprint(tls.getpeercert())
 
 #tls.sendall('this is a test message')
 tls.sendall('GET / HTTP/1.1\r\n\r\n')
-print tls.recv(4096)
+pprint.pprint(tls.recv(4096).split("\r\n"))
+pprint.pprint(tls.recv(4096))
 tls.close()
 
 
@@ -41,8 +42,12 @@ tls = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED,
                             ca_certs='./myca.crt',
                             ssl_version=ssl.PROTOCOL_TLSv1)
 
-tls.sendall('this is a test message!!!')
-print tls.recv(4096)
+#tls.sendall('this is a test message!!!')
+
+
+tls.sendall('GET /www/cgi/adder.cgi?m=5&n=6 HTTP/1.1\r\n\r\n')
+pprint.pprint(tls.recv(4096).split("\r\n"))
+pprint.pprint(tls.recv(4096))
 tls.close()
 
 exit(0)
