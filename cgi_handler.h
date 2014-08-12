@@ -15,39 +15,34 @@
 #define READ_END 0
 #define WRITE_END 1
 
+/* struct containing details about the client issuing a cgi request and the
+ * forked child that runs the cgi script, the client details are accessed using
+ * the client socket from the client pool
+ */
 typedef struct cgi_client_s{
 	pid_t child_pid;		// pid of the execed child process
 	int client_sock;		// the client socket that expects the response
-//    char cgi_buf[MAX_LEN];
-//    unsigned int cgi_buf_size;
     int pipe_parent2child[2]; 	// child_stdin pipe
     int pipe_child2parent[2];	// child_stdout pipe
     struct cgi_client_s *next;
-    /*
-     * pipe notes:
-     * read from 0, write to 1
-     * child closes stdin[1] and stdout[0]
-     * parent closes stdin[0] and stdout[1]
-     *
-     * parent writes to stdin[1] to pass to child
-     * child writes stdout[1] to write to parent
-     *
-     * parent should select on stdout[0] and shld close stdin[1]
-     * when finished writing to child or u have fd leak
-     */
 } cgi_client;
 
 cgi_client* cgi_client_list;
 
-
+/* the main function that handles the cgi request sent by the client. This
+ * function calls the other auxiliary cgi functions to set up the server to
+ * create/run the cgi script and respond to the client
+ * responds 1 if the client connection needs to be closed, responds 0 otherwise
+ */
 int handle_cgi_request(client *c, char *uri);
 
-// sets up some basic CGI environmental variables for the cgi script
-// returns -1 if there is any error, returns 0 otherwise
+/* sets up some basic CGI environmental variables for the cgi script returns -1
+ * if there is any error, returns 0 otherwise
+ */
 int set_env_vars(client *c, char* uri);
 
-/* sets the HTTP-Specific environmental-Variables for the cgi script by
- * parsing the request sent by the client
+/* sets the HTTP-Specific environmental-Variables for the cgi script by parsing
+ * the request sent by the client
  *
  * return value:
  * -1 if error
@@ -75,7 +70,9 @@ cgi_client * new_cgi_client(int sock);
 int cgi_child_process_creator(client *c, char *message_body,
 		int content_length, cgi_client *cgi_client_struct);
 
-
+/*
+ *
+ */
 void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p);
 
 #endif /* CGI_HANDLER_H_ */
