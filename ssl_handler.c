@@ -211,7 +211,7 @@ int read_from_ssl_client(client *c, char* inbuf, int numbytes)
 	//return 0;
 
 	/////////////////////////////////////////////
-
+	int count =0;
 	do{
 		do {
 			read_blocked=0;
@@ -229,7 +229,8 @@ int read_from_ssl_client(client *c, char* inbuf, int numbytes)
 				read_blocked=1;
 				break;
 			default:
-				printf("SSL read problem\n");
+				count++;
+				printf("SSL read problem count %d\n", count);
 				err_val = ERR_get_error();
 				memset(err_string, 0, MAXLINE);
 				ERR_error_string(err_val, err_string);
@@ -325,7 +326,7 @@ void delete_client_from_ssl_list(int client_sock)
 			bla = ERR_get_error();
 			memset(buffer, 0, MAXLINE);
 			ERR_error_string(bla, buffer);
-			printf("error in delete client shutdown: %s",buffer);
+			printf("error in delete client shutdown: %s\n",buffer);
 			return;
 		}
 	}
