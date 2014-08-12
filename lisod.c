@@ -170,7 +170,7 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 	fd_set readfds;
 	fd_set writefds;
 	struct timeval timeout;
-	int i, maxfd, rc;
+	int i, maxfd, rc, wait_status;
 	cgi_client *cgi_itr;
 	signal(SIGPIPE, SIG_IGN);
 
@@ -206,9 +206,9 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 		i = 0;
 		LL_FOREACH(cgi_client_list, cgi_itr)
 		{
-//			printf("printing child fd in select %d.\n",
-//					cgi_itr->pipe_child2parent[READ_END]);
-//			printf("%d",i++);
+			//			printf("printing child fd in select %d.\n",
+			//					cgi_itr->pipe_child2parent[READ_END]);
+			//			printf("%d",i++);
 			FD_SET(cgi_itr->pipe_child2parent[READ_END], &readfds);
 			if (cgi_itr->pipe_child2parent[READ_END] > maxfd)
 				maxfd = cgi_itr->pipe_child2parent[READ_END];
@@ -224,7 +224,7 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 
 			// NOTE: remember to replace this with graceful shutdown
 			exit(EXIT_FAILURE); // graceful reset
-//			continue;
+			//			continue;
 		}
 
 		if (FD_ISSET(http_sock, &readfds))
@@ -266,6 +266,9 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 			}
 
 		}
+
+		// wait on any defunct cgi children
+		waitpid(-1, &wait_status, WNOHANG);
 
 	}
 }
@@ -373,6 +376,7 @@ void handle_input(client *c, client_pool *p)
 
 	if (nread == 0)
 	{
+		printf("nread 0 disconnecting client\n");
 		disconnect_client(c, p);
 		return;
 	}
@@ -456,16 +460,6 @@ void handle_input(client *c, client_pool *p)
 	}
 
 	/******************************* CGI BRANCH ******************************/
-	// PUT BRANCH FOR CGI HANDLING HERE
-	// TODO: put "/cgi/" as the comparison string for cgi script
-	//	if (strstr(uri, "/cgi-bin/"))
-	//	char *cgi_source;
-	//	if (strlen(cla.cgi_folder) == 0)
-	//		cgi_source = cla.cgi_script;
-	//	else
-	//		cgi_source = cla.cgi_folder;
-
-	//	if (strncmp(uri, cgi_source, strlen(cgi_source)) == 0)
 	if (strstr(uri, "/cgi/"))
 	{
 		close_connection = handle_cgi_request(c, uri);
@@ -473,20 +467,16 @@ void handle_input(client *c, client_pool *p)
 		{
 			disconnect_client(c,p);
 		}
-		// dummy error
-//		http_error(c, method, "501", "Not Implemented",
-//				"This server only handles GET,HEAD and POST requests. "
-//				"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
 
-		cgi_client* temp_cgi;
-		int count = 0;
-		LL_FOREACH(cgi_client_list,temp_cgi)
-		{
-			printf("cgi in isset %d %d\n", temp_cgi->client_sock,
-					temp_cgi->pipe_child2parent[READ_END]);
-			count++;
-		}
-		printf("finished printing socks of cgiclients count = %d\n",count);
+		//		cgi_client* temp_cgi;
+		//		int count = 0;
+		//		LL_FOREACH(cgi_client_list,temp_cgi)
+		//		{
+		//			printf("cgi in isset %d %d\n", temp_cgi->client_sock,
+		//					temp_cgi->pipe_child2parent[READ_END]);
+		//			count++;
+		//		}
+		//		printf("finished printing socks of cgiclients count = %d\n",count);
 		return;
 	}
 
@@ -549,7 +539,19 @@ void log_into_file(char *message)
 	fp = fopen(cla.log_file,"a"); // append mode
 	if( fp == NULL )
 		return;
-	fprintf(fp, "%s",message);
+
+	// time of log
+	time_t rawtime;
+	struct tm *tm_date;
+	char time_str[256];
+	time( &rawtime );
+	tm_date = localtime( &rawtime );
+	memset(time_str,0,256);
+	strftime(time_str,256,"[%e-%b-%Y %T %Z]:", tm_date);
+
+	// log the message
+	fprintf(fp, "%s %s", time_str, message);
+
 	fclose(fp);
 }
 
