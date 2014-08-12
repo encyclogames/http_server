@@ -61,8 +61,8 @@ int handle_cgi_request(client *c, char *uri)
 	char *inbufptr = NULL;
 	int content_length = 0, request_length = 0, nread = 0, ret_val = 0;
 	int received_message_body_length = 0, bytes_to_read = 0;
-	//	printf("cgi client inbuf:%sEND\n", c->inbuf);
-//	printf("uri:%sEND\n", uri);
+		printf("cgi client inbuf:%sEND\n", c->inbuf);
+//		printf("uri:%sEND\n", uri);
 
 	request_end = strstr(c->inbuf, "\r\n\r\n");
 	// first check to see whether we have an incomplete request or not
@@ -356,7 +356,7 @@ int set_http_env_vars(client *c)
 			printf("GOT CL:%d\n",content_length);
 		}
 
-//		printf("Line %d : %s\n", i++, request_line);
+		//		printf("Line %d : %s\n", i++, request_line);
 		request_line = strtok(NULL, "\r\n");
 	}
 
@@ -586,26 +586,6 @@ processes.\n");
 int cgi_child_process_creator(client *c, char *message_body,
 		int content_length, cgi_client *cgi_client_struct)
 {
-	/*************** BEGIN VARIABLE DECLARATIONS **************/
-
-	/*
-	 * int pipe_parent2child[2]; 	// child_stdin pipe
-	 * int pipe_child2parent[2];	// child_stdout pipe
-	 *
-	 * pipe notes:
-	 * read from 0, write to 1
-	 * child closes stdin[1] and stdout[0]
-	 * parent closes stdin[0] and stdout[1]
-	 *
-	 * parent writes to stdin[1] to pass to child
-	 * child writes stdout[1] to write to parent
-	 *
-	 * parent should select on stdout[0] and shld close stdin[1]
-	 * when finished writing to child or u have fd leak
-	 */
-
-	/*************** END VARIABLE DECLARATIONS **************/
-
 
 	/*************** BEGIN FORK **************/
 	cgi_client_struct->child_pid = fork();
@@ -631,8 +611,7 @@ int cgi_child_process_creator(client *c, char *message_body,
 		memset(script_name, 0, MAX_FILENAME_LEN);
 		char *script_name_env_ptr = getenv("SCRIPT_NAME");
 		strcpy(script_name, script_name_env_ptr);
-//		fprintf(stderr, "in child script name from env %s\n", script_name);
-		// need to fix this, since in child stdout does not makes sense
+		//		fprintf(stderr, "in child script name from env %s\n", script_name);
 		if (script_name == NULL)
 		{
 			log_into_file( "Script name setting failed from env");
@@ -658,7 +637,7 @@ int cgi_child_process_creator(client *c, char *message_body,
 			{
 				script_name_env_ptr += 4; //skip the "/cgi" in script name
 			}
-//			fprintf(stderr, "edited %s\n", script_name_env_ptr);
+			//			fprintf(stderr, "edited %s\n", script_name_env_ptr);
 			strcat(filename, script_name_env_ptr);
 		}
 		char* argv_child[] = {filename,NULL};
@@ -668,12 +647,14 @@ int cgi_child_process_creator(client *c, char *message_body,
 		if (execve(filename, argv_child, environ))
 		{
 			execve_error_handler();
-			fprintf(stderr, "Error executing execve syscall.\n");
+			log_into_file("Error executing execve syscall.\n");
+			log_into_file(script_name_env_ptr);
 			return -1;
 		}
 		/*************** END EXECVE ****************/
 	}
 
+	// parent
 	if (cgi_client_struct->child_pid > 0)
 	{
 		fprintf(stdout, "Parent: Heading to select() loop.\n");
@@ -709,24 +690,28 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 
 	char buf[MAX_LEN];
 	int readret, status;
+	// flag to check if read is the first from child or not
+	char read_start = 1;
 	char response[] = "HTTP/1.1 200 OK\r\n";
-//	char response_end = "";
+	//	char response_end = "";
 
-	if (c->ssl_connection == 0)
-	{
-		write(temp_cgi->client_sock, response, strlen(response));
-	}
-	else
-	{
-		write_to_ssl_client(c, response, strlen(response));
-	}
-
-	/* you want to be looping with select() telling you when to read */
 	while((readret = read(temp_cgi->pipe_child2parent[READ_END],
 			buf, MAX_LEN-1)) > 0)
 	{
+		if (read_start == 1) // 1st read from child valid, respond with 200
+		{
+			if (c->ssl_connection == 0)
+			{
+				write(temp_cgi->client_sock, response, strlen(response));
+			}
+			else
+			{
+				write_to_ssl_client(c, response, strlen(response));
+			}
+			read_start = 0;
+		}
 		buf[readret] = '\0'; /* nul-terminate string */
-//		fprintf(stdout, "Got from CGI: %s\n", buf);
+		//		fprintf(stdout, "Got from CGI: %s\n", buf);
 		if (c->ssl_connection == 0)
 		{
 			write(temp_cgi->client_sock, buf, strlen(buf));
@@ -736,19 +721,34 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 			write_to_ssl_client(c, buf, strlen(buf));
 		}
 	}
-//	printf("CGI readert finished with %d.\n", readret);
+	//	printf("CGI readert finished with %d.\n", readret);
 
 	close(temp_cgi->pipe_child2parent[READ_END]);
 	close(temp_cgi->pipe_parent2child[WRITE_END]);
 
+	if (readret == -1)
+	{
+		// child read pipe broken at the very beginning
+		// server responds with 500
+		if (read_start == 1)
+		{
+			http_error( c, "Error in reading message response from child",
+					"500", "Internal Server Error",
+					"An internal server error has occurred ",
+					CLOSE_CONN, SEND_HTTP_BODY);
+		}
+		// child error, so clean up child info in main server
+
+	}
+
 	if (readret == 0)
 	{
 		fprintf(stdout, "CGI spawned process returned with EOF as expected.\n");
-//		waitpid(temp_cgi->child_pid, &status, WNOHANG);
-//		status = WEXITSTATUS(status);
+		//		waitpid(temp_cgi->child_pid, &status, WNOHANG);
+		//		status = WEXITSTATUS(status);
 
-		waitpid(temp_cgi->child_pid, &status, 0);
-		printf("waited on child after transfer finished\n");
+		waitpid(temp_cgi->child_pid, &status, WNOHANG);
+		//		printf("waited on child after transfer finished\n");
 		LL_DELETE(cgi_client_list, temp_cgi);
 		free(temp_cgi);
 	}
