@@ -70,6 +70,8 @@ int handle_cgi_request(client *c, char *uri)
 	{
 		c->request_incomplete = 0;
 		message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
+		if (message_body == NULL)
+			printf("msg bdy is null after check");
 	}
 	// buffer does not contain "\r\n\r\n"
 	else
@@ -180,6 +182,8 @@ int handle_cgi_request(client *c, char *uri)
 		return 1;
 	}
 
+	reset_client_buffers(c);
+
 	return 0;
 }
 
@@ -244,7 +248,7 @@ int set_env_vars(client *c, char *uri)
 
 int set_env_vars_from_uri(char *uri)
 {
-	printf("folder:%s script:%s\n", cla.cgi_folder, cla.cgi_script);
+//	printf("folder:%s script:%s\n", cla.cgi_folder, cla.cgi_script);
 
 	// keep these uris as tests for parsing and move them to a python test later
 	//	 char uri[] = "http://yourserver/www/cgi/search.cgi/misc/movies.mdb?sgi";
@@ -281,7 +285,7 @@ int set_env_vars_from_uri(char *uri)
 		path_info = strstr(script_name+strlen("/cgi/")+1, "/");
 		if (path_info == NULL)
 		{
-			unsetenv("PATH_INFO");
+			setenv("PATH_INFO","/",1);
 		}
 		else
 		{
@@ -657,7 +661,7 @@ int cgi_child_process_creator(client *c, char *message_body,
 	// parent
 	if (cgi_client_struct->child_pid > 0)
 	{
-		fprintf(stdout, "Parent: Heading to select() loop.\n");
+//		fprintf(stdout, "Parent: Heading to select() loop.\n");
 		close(cgi_client_struct->pipe_child2parent[WRITE_END]);
 		close(cgi_client_struct->pipe_parent2child[READ_END]);
 
@@ -668,7 +672,7 @@ int cgi_child_process_creator(client *c, char *message_body,
 			return -1;
 		}
 
-		printf("finished writing message body.\n");
+//		printf("finished writing message body.\n");
 
 		/* finished writing to spawn */
 		close(cgi_client_struct->pipe_parent2child[WRITE_END]);
@@ -711,7 +715,7 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 			read_start = 0;
 		}
 		buf[readret] = '\0'; /* nul-terminate string */
-		//		fprintf(stdout, "Got from CGI: %s\n", buf);
+//				fprintf(stdout, "Got from CGI: %s\n", buf);
 		if (c->ssl_connection == 0)
 		{
 			write(temp_cgi->client_sock, buf, strlen(buf));
@@ -751,8 +755,28 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 		//		printf("waited on child after transfer finished\n");
 		LL_DELETE(cgi_client_list, temp_cgi);
 		free(temp_cgi);
+
+		reset_client_buffers(c);
 	}
 
 	// TO DO: check code for faulty read/broken pipe/incomplete child response
 }
+
+/* simple auxiliary function for debugging purposes
+ */
+void print_env_vars()
+{
+	// START ENV VAR CHECKS
+		printf("LIST OF ENVP:\n");
+		int i=0;
+		while(environ[i])
+		{
+//		if (i>35) //skip all OS related env vars
+		printf("%s\n", environ[i]);
+		i++;
+		}
+		printf("END\n");
+		// END ENV VAR CHECKS
+}
+
 
