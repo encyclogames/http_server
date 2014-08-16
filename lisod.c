@@ -62,6 +62,7 @@ void init_from_command_line(int argc, char **argv)
 		strcpy(cla.cgi_script, argv[6]);
 		memset(cla.cgi_folder, 0, MAX_FILENAME_LEN);
 	}
+	printf("folder:%s script:%s\n", cla.cgi_folder, cla.cgi_script);
 
 	strcpy(cla.private_key_file, argv[7]);
 	strcpy(cla.certificate_file, argv[8]);
