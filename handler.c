@@ -62,7 +62,14 @@ int handle_GET(client *c, char *uri, char* www_folder)
 		if (strstr(c->incomplete_request_buffer,"Connection") != NULL)
 		{
 			if (strcmp(strstr(c->incomplete_request_buffer,":")+1,"close") == 0)
+			{
 				c->close_connection = 1;
+			}
+			else if (strcasecmp(strstr(c->incomplete_request_buffer,":")+2,
+					"keep-alive") == 0)
+			{
+				c->close_connection = DONT_CLOSE_CONN;
+			}
 		}
 	}
 
@@ -75,7 +82,14 @@ int handle_GET(client *c, char *uri, char* www_folder)
 		if (strstr(request_line,"Connection") != NULL)
 		{
 			if (strcmp(strstr(request_line,":")+1,"close") == 0)
+			{
 				c->close_connection = 1;
+			}
+			else if (strcasecmp(strstr(request_line,":")+2,
+					"keep-alive") == 0)
+			{
+				c->close_connection = DONT_CLOSE_CONN;
+			}
 		}
 
 		//printf("Line %d : %s\n", i++, request_line);
@@ -90,10 +104,9 @@ int handle_GET(client *c, char *uri, char* www_folder)
 		memcpy(c->incomplete_request_buffer,
 				last_request_line_read,
 				strlen(last_request_line_read));
-		//		memcpy(c->inbuf,last_request_line_read,strlen(last_request_line_read));
 		memset(c->inbuf, 0, sizeof(c->inbuf));
 		c->inbuf_size = 0;
-		return 0; //dont close connection
+		return DONT_CLOSE_CONN; //dont close connection
 	}
 
 	//*************************************************************************
@@ -224,7 +237,11 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 		if (strstr(request_line,"Connection") != NULL)
 		{
 			if (strcasecmp(strstr(request_line,":")+2,"close") == 0)
-				c->close_connection = 1;
+				c->close_connection = CLOSE_CONN;
+			else if (strcasecmp(strstr(request_line,":")+2,"keep-alive") == 0)
+			{
+				c->close_connection = DONT_CLOSE_CONN;
+			}
 		}
 
 		printf("Line %d : %s %d\n", i++, request_line,c->close_connection);
@@ -236,7 +253,7 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 	// dont start processing the request since its incomplete
 	if (c->request_incomplete == 2)
 	{
-		printf("request is found incpmplee\n");
+		//		printf("request is found incomplete\n");
 		memset(c->incomplete_request_buffer, 0, MAXLINE);
 		memcpy(c->incomplete_request_buffer,
 				last_request_line_read,
@@ -285,8 +302,6 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 
 	reset_client_buffers(c);
 
-	//	memset(c->inbuf,0,sizeof(c->inbuf));
-	//	c->request_incomplete = 0;
 	//	printf("HEAD OK");
 	return c->close_connection;
 }
@@ -297,27 +312,6 @@ int handle_POST(client *c, char *uri, char* www_folder)
 	http_error(c, "POST", "501", "Not Implemented", "This method is unimplemented", 0, 1);
 	//	char debug_output[MAXLINE];
 	int close_connection = 0;
-
-	/* $begin serve_dynamic */
-	//	void serve_dynamic(int fd, char *filename, char *cgiargs)
-	//	{
-	//	    char buf[MAXLINE], *emptylist[] = { NULL };
-	//
-	//	    /* Return first part of HTTP response */
-	//	    sprintf(buf, "HTTP/1.0 200 OK\r\n");
-	//	    Rio_writen(fd, buf, strlen(buf));
-	//	    sprintf(buf, "Server: Tiny Web Server\r\n");
-	//	    Rio_writen(fd, buf, strlen(buf));
-	//
-	//	    if (Fork() == 0) { /* child */
-	//		/* Real server would set all CGI vars here */
-	//		setenv("QUERY_STRING", cgiargs, 1);
-	//		Dup2(fd, STDOUT_FILENO);         /* Redirect stdout to client */
-	//		Execve(filename, emptylist, environ); /* Run CGI program */
-	//	    }
-	//	    Wait(NULL); /* Parent waits for and reaps child */
-	//	}
-	/* $end serve_dynamic */
 
 	//	printf(c->inbuf);
 	//	printf("\npost request end\n");
@@ -357,7 +351,8 @@ int handle_POST(client *c, char *uri, char* www_folder)
 	//  411_LENGTH_REQUIRED
 	if (post_content_len == 0)
 	{
-		http_error(c, uri, "411", "Length Required", "This POST request is missing Content-Length sent to ", 0, 1);
+		http_error(c, uri, "411", "Length Required",
+				"This POST request is missing Content-Length sent to ", 0, 1);
 	}
 
 	// get location of cgi script
