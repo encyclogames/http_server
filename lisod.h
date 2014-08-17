@@ -35,14 +35,15 @@
 
 
 #define MAX_FILENAME_LEN 128
-#define MAX_HEADER_LEN 8192  //test scenario for incomplete request uses 128
+#define MAX_HEADER_LEN 8192
 #define MAX_LEN 8192
 #define MAX_CLIENTS 1024
 #define MAX_HOSTNAME 512
 #define MAXLINE 512
+#define MAX_DEBUG_MSG_LEN 256
 
-// some auxiliary flags just to improve understanding of argument intents
-// primarily for the http_error function in handler.c
+// some auxiliary flags just to improve understanding of argument/return
+// intents primarily for the http_error function in handler.c
 #define CLOSE_CONN 1
 #define DONT_CLOSE_CONN 0
 #define SEND_HTTP_BODY 1
@@ -61,7 +62,7 @@ typedef struct {
 } cmd_line_args;
 
 cmd_line_args cla; // global scope
-
+char debug_output[MAX_DEBUG_MSG_LEN]; // stores the debug message to log in file
 
 /*
  * the client struct that stores the details of the client
@@ -72,7 +73,7 @@ cmd_line_args cla; // global scope
  * "inbuf" is the internal buffer that stores the http request of the client
  *
  * "close_connection" notes whether the client has sent a "Connection:Close"
- * in its http header or not indicating that my server should remove it
+ * in its http header or indicating that my server should not remove it
  * from its persistent connection set of file descriptors
  *
  * "ssl_connection" is a flag variable that indicates whether the client is

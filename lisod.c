@@ -14,8 +14,6 @@
 
 char *hostname;
 
-//sslobj* ssl_client_list = NULL;
-
 // server setup auxiliary functions
 void init_from_command_line(int argc, char **argv);
 void web_server();
@@ -28,6 +26,7 @@ void disconnect_client(client *c, client_pool *p);
 
 // Other utility functions
 int daemonize(char* lock_file);
+void clear_bad_fd(client_pool *p);
 
 /*
  * Prints the command line format of the lisod program and exits immediately
@@ -35,7 +34,7 @@ int daemonize(char* lock_file);
 void usage() {
 	fprintf(stderr, "usage: ./lisod <HTTP port> <HTTPS port> <log file> <lock file> "
 			"<www folder> <CGI folder or script name> <private key file> <certificate file>\n");
-	exit(-1);
+	exit(EXIT_FAILURE);
 }
 
 /*
@@ -62,7 +61,11 @@ void init_from_command_line(int argc, char **argv)
 		strcpy(cla.cgi_script, argv[6]);
 		memset(cla.cgi_folder, 0, MAX_FILENAME_LEN);
 	}
-	printf("folder:%s script:%s\n", cla.cgi_folder, cla.cgi_script);
+	memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+	sprintf(debug_output,"cla folder:%s cla script:%s\n",
+			cla.cgi_folder, cla.cgi_script);
+	log_into_file(debug_output);
+
 
 	strcpy(cla.private_key_file, argv[7]);
 	strcpy(cla.certificate_file, argv[8]);
@@ -95,8 +98,6 @@ int main( int argc, char *argv[] )
 	// First daemonize the server process
 	// daemonize(cla.lock_file);
 
-	//printf( "Listening on port %d for new clients \n", cla.http_port);
-	//fflush(stdout);
 	web_server();
 	return 0;
 }
@@ -172,6 +173,7 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 	fd_set writefds;
 	struct timeval timeout;
 	int i, maxfd, rc, wait_status;
+	client *c;
 	cgi_client *cgi_itr;
 	signal(SIGPIPE, SIG_IGN);
 
@@ -198,34 +200,46 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 			if (c->sock > maxfd) maxfd = c->sock;
 		}
 
-		// TO DO : PUT IN CODE FOR SETTING FDS FOR EXECED CGI CHILDREN
-
-
-		// pipe_child2parent[READ_END]
-
-		// go through ssl client list and set socket in read fd
+		// SET FDS FOR EXECED CGI CHILDREN
 		i = 0;
 		LL_FOREACH(cgi_client_list, cgi_itr)
 		{
-			//			printf("printing child fd in select %d.\n",
-			//					cgi_itr->pipe_child2parent[READ_END]);
-			//			printf("%d",i++);
 			FD_SET(cgi_itr->pipe_child2parent[READ_END], &readfds);
 			if (cgi_itr->pipe_child2parent[READ_END] > maxfd)
 				maxfd = cgi_itr->pipe_child2parent[READ_END];
 		}
 
 		rc = select(maxfd+1, &readfds, NULL, NULL, &timeout);
-		if (rc == -1)
+
+		if (rc == -1) // select error
 		{
 			if (errno == EBADF)
-				perror("Select error, bad file descriptor in sets");
-			else if (errno == EINTR)
-				perror("Select was interrupted by signal");
+			{
+				memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+				sprintf(debug_output,"Select error, bad file descriptor in sets");
+				log_into_file(debug_output);
 
-			// NOTE: remember to replace this with graceful shutdown
-			exit(EXIT_FAILURE); // graceful reset
-			//			continue;
+				exit(1);
+			}
+			else if (errno == EINTR)
+			{
+				perror("Select was interrupted by signal");
+			}
+			continue; // graceful handle rather than exit_failure
+		}
+
+		if (rc == 0) // select timeout
+		{
+			for (i = 0; i < MAX_CLIENTS; i++)
+			{
+
+				c = p->clients[i];
+				if (c == NULL)
+					continue;
+
+				if (FD_ISSET(c->sock, &readfds))
+					handle_input(c, p);
+			}
 		}
 
 		if (FD_ISSET(http_sock, &readfds))
@@ -236,20 +250,11 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 		if (FD_ISSET(https_sock, &readfds))
 		{
 			accept_ssl_client(https_sock, p);
-			//			printf("finished function accept ssl client\n");
-			//			sslobj* temp_ssl;
-			//			int count = 0;
-			//			LL_FOREACH(ssl_client_list,temp_ssl)
-			//			{
-			//				printf("ssl in isset %d\n", temp_ssl->sock);
-			//				count++;
-			//			}
-			//			printf("finished printing socks of ssl clients count = %d\n",count);
 		}
 
 		for (i = 0; i < MAX_CLIENTS; i++)
 		{
-			client *c;
+
 			c = p->clients[i];
 			if (c == NULL)
 				continue;
@@ -258,7 +263,7 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 				handle_input(c, p);
 		}
 
-		// TO DO : add code for sending response from cgi child to the client
+		// send response from cgi child to the client
 		LL_FOREACH(cgi_client_list, cgi_itr)
 		{
 			if (FD_ISSET(cgi_itr->pipe_child2parent[READ_END], &readfds))
@@ -268,7 +273,7 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 
 		}
 
-		// wait on any defunct cgi children
+		// wait on any defunct cgi children not captured by other waits
 		waitpid(-1, &wait_status, WNOHANG);
 
 	}
@@ -282,8 +287,6 @@ set_hostname(client *c)
 {
 	char addrbuf[32];
 	inet_ntop(AF_INET, &c->cliaddr.sin_addr, addrbuf, sizeof(addrbuf));
-	//	DPRINTF(DEBUG_CLIENTS, "Doing reverse lookup for client %d IP %s\n",
-	//			c->sock, addrbuf);
 
 	struct hostent *he;
 	if ((he = gethostbyaddr(&c->cliaddr.sin_addr, sizeof(struct sockaddr_in),
@@ -292,32 +295,31 @@ set_hostname(client *c)
 	} else {
 		strncpy(c->hostname, addrbuf, MAX_HOSTNAME);
 	}
-	//	DPRINTF(DEBUG_CLIENTS, "Client %d name: %s\n", c->sock, c->hostname);
 }
 
 void accept_client(int sock, client_pool *p)
 {
 	int clisock;
 	struct sockaddr_in cliaddr;
-	//    socklen_t addrlen;
 	socklen_t addrlen = sizeof(struct sockaddr_in);
 	client *c;
 
-	//	DPRINTF(DEBUG_SOCKETS, "Accepting a connection\n");
 	clisock = accept(sock, (struct sockaddr *)&cliaddr, &addrlen);
 	if (clisock == -1) {
-		perror("client accept failed from the http port");
-		//		clienterror(c->sock, "GET", "501", "Not Implemented", "This method unimplemented");
+		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+		sprintf(debug_output,"client accept failed from the http port");
+		log_into_file(debug_output);
 		return;
 	}
 	if (fcntl(clisock, F_SETFL, O_NONBLOCK) == -1) {
-		printf("could not set client socket to non-blocking for client %s",
+		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+		sprintf(debug_output,"could not set client socket to "
+				"non-blocking for client %s",
 				inet_ntoa(cliaddr.sin_addr));
+		log_into_file(debug_output);
+
 		return;
 	}
-
-	// log into log file client socket info when client connects
-	//	DPRINTF(DEBUG_SOCKETS|DEBUG_CLIENTS, "Got client on socket %d\n", clisock);
 
 	c = new_client(p, clisock);
 	c->cliaddr = cliaddr;
@@ -327,13 +329,9 @@ void accept_client(int sock, client_pool *p)
 
 void disconnect_client(client *c, client_pool *p)
 {
-	//	DPRINTF(DEBUG_CLIENTS, "Disconnecting client %d\n", c->sock);
-	//	proto_disconnect(c, p, NULL);
-
 	//only disconnect if client sent a connection close request in http
 	if (c->close_connection == DONT_CLOSE_CONN)
 		return;
-	//	printf("disconnecting client %d\n", c->sock);
 	if (c->ssl_connection == 1)
 		delete_client_from_ssl_list(c->sock);
 	close(c->sock);
@@ -354,7 +352,6 @@ void handle_input(client *c, client_pool *p)
 	char* inbufptr = inbuf;
 	char method[10], uri[MAXLINE], version[12] ;
 
-	//	DPRINTF(DEBUG_INPUT, "Handling input from client %d\n", c->sock);
 	memset(inbuf, 0, MAX_HEADER_LEN+1);
 	memset(method, 0, 10);
 	memset(uri, 0, MAXLINE);
@@ -364,20 +361,28 @@ void handle_input(client *c, client_pool *p)
 	if (c->ssl_connection == 1)
 	{
 		nread = read_from_ssl_client(c, inbufptr, sizeof(inbuf)-1);
-		//printf("out of ssl read in handle input: %sEND\n", inbufptr);
+		//printf("out of ssl read in handle input: %sEND length = %d\n",
+		// inbufptr, nread);
 	}
 	else
 	{
 		nread = read(c->sock, inbuf, sizeof(inbuf)-1);
 		inbufptr = inbuf;
-		//printf("out of basic read in handle input: %sEND\n", inbufptr);
+		//printf("out of basic read in handle input: %sEND length = %d\n",
+		//inbufptr, nread );
 	}
-	//printf("read %d bytes from client\n",nread);
-	//printf("%sEND\n",inbuf);
 
 	if (nread == 0)
 	{
-		printf("nread 0 disconnecting client\n");
+		// log which client is being disconnected
+		char remote_addr[20] = "";
+		char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
+		strcat(remote_addr, client_ip);
+		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+		sprintf(debug_output,"nread 0 disconnecting client %s\n",
+				client_ip);
+		log_into_file(debug_output);
+
 		disconnect_client(c, p);
 		return;
 	}
@@ -416,7 +421,6 @@ void handle_input(client *c, client_pool *p)
 	// if the previous request was incomplete, then the client struct already
 	// knows, so i directly jump into the function that handles the incomplete
 	// request
-	//	printf("Start Switch\n");
 	switch(c->request_incomplete)
 	{
 	case 1: close_connection = handle_GET(c, uri, cla.www_folder);
@@ -449,7 +453,13 @@ void handle_input(client *c, client_pool *p)
 	request_line = strtok(inbuf, "\r\n");
 
 	num_matches = sscanf(request_line, "%s %s %s", method, uri, version);
-	//printf("method %s uri %s version %s \n", method, uri, version);
+
+	//	memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+	//	sprintf(debug_output,"method %s uri %s version %s \n",
+	//			method, uri, version);
+	//	log_into_file(debug_output);
+
+
 	// check to see if we actually received a proper http request line
 	if (num_matches != 3)
 	{
@@ -468,16 +478,6 @@ void handle_input(client *c, client_pool *p)
 		{
 			disconnect_client(c,p);
 		}
-
-		//		cgi_client* temp_cgi;
-		//		int count = 0;
-		//		LL_FOREACH(cgi_client_list,temp_cgi)
-		//		{
-		//			printf("cgi in isset %d %d\n", temp_cgi->client_sock,
-		//					temp_cgi->pipe_child2parent[READ_END]);
-		//			count++;
-		//		}
-		//		printf("finished printing socks of cgiclients count = %d\n",count);
 		return;
 	}
 
@@ -527,7 +527,7 @@ void handle_input(client *c, client_pool *p)
 				"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
 		return;
 	}
-	if (close_connection == 1)
+	if (close_connection == CLOSE_CONN)
 	{
 		disconnect_client(c,p);
 	}
@@ -585,7 +585,6 @@ void signal_handler(int sig)
  */
 int daemonize(char* lock_file)
 {
-	char debug_output[MAXLINE]= {0};
 	/* drop to having init() as parent */
 	int i, lfp, pid = fork();
 	char str[256] = {0};
@@ -606,6 +605,7 @@ int daemonize(char* lock_file)
 
 	if (lfp < 0)
 	{
+		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 		sprintf(debug_output,"Could not open lock file for lisod daemon");
 		log_into_file(debug_output);
 		exit(EXIT_FAILURE); /* can not open */
@@ -613,6 +613,7 @@ int daemonize(char* lock_file)
 
 	if (lockf(lfp, F_TLOCK, 0) < 0)
 	{
+		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 		sprintf(debug_output,"Could not lock file for lisod daemon");
 		log_into_file(debug_output);
 		exit(EXIT_SUCCESS); /* can not lock */
@@ -628,11 +629,50 @@ int daemonize(char* lock_file)
 	signal(SIGTERM, signal_handler); /* software termination signal from kill */
 
 	// log into file --> "Successfully daemonized lisod process, pid %d."
-
+	memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 	sprintf(debug_output,"Successfully daemonized lisod process, pid %d.", pid);
 	log_into_file(debug_output);
 
 	return EXIT_SUCCESS;
 }
 
+/* Search for bad file descriptor and remove it from memory along with its
+ * associated data structures
+ */
+void clear_bad_fd(client_pool *p)
+{
+	printf("starting cleanup\n");
+	int i;
+	client *c;
+	cgi_client *cgi_itr;
 
+	// check for bad fd in the client list
+	for (i = 0; i < MAX_CLIENTS; i++)
+	{
+		c = p->clients[i];
+		if (c == NULL)
+			continue;
+
+		if (fcntl(c->sock, F_GETFD) == -1)
+		{
+			if (errno == EBADFD) // so the client socket is a bad fd
+			{
+				c->close_connection = CLOSE_CONN;
+				disconnect_client(c, p);
+			}
+		}
+	}
+
+	LL_FOREACH(cgi_client_list, cgi_itr)
+	{
+		if (fcntl(cgi_itr->pipe_child2parent[READ_END], F_GETFD) == -1)
+		{
+			if (errno == EBADFD) // cgi child pipe socket is broken
+			{
+				printf("got broken child");
+				// transfer function handles child waiting and cleanup
+				transfer_response_from_cgi_to_client(cgi_itr, p);
+			}
+		}
+	}
+}
