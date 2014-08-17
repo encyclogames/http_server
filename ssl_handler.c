@@ -176,7 +176,7 @@ void accept_ssl_client(int listen_sock, client_pool *p)
 	c->ssl_connection = 1;
 	set_hostname(c);
 
-	printf("SSL accept turned out ok for client %d\n", client_ssl_sock);
+//	printf("SSL accept turned out ok for client %d\n", client_ssl_sock);
 }
 
 
@@ -188,34 +188,17 @@ int read_from_ssl_client(client *c, char* inbuf, int numbytes)
 	int readbytes = 0, final_readbytes = 0;
 	int readbyte_limit = numbytes; // MAX_LEN
 	int read_blocked = 0;
-	long err_val;
+	long err_val,bla;
 	char err_string[MAXLINE];
 	char* http_end;
 	sslobj* temp_ssl;
 	LL_SEARCH_SCALAR(ssl_client_list,temp_ssl,sock,c->sock);
 
-	////////////////////////////////////////////
-	// safety code for python ssl client sanity check
-	// TO DO: fix the fd closing issue in order to not use this
-	//	if ((temp_ssl->next))
-	//		temp_ssl=(temp_ssl->next);
-
-	/////////////////   BASIC SSL ECHO FOR PYTHON TEST
-	//	int readret = 0;
-	//	char buf[BUF_SIZE];
-	//	while((readret = SSL_read(temp_ssl->client_ssl, buf, BUF_SIZE)) > 0)
-	//	{
-	//		SSL_write(temp_ssl->client_ssl, buf, readret);
-	//		memset(buf, 0, BUF_SIZE);
-	//	}
-	//return 0;
-
-	/////////////////////////////////////////////
-	int count =0;
 	do{
 		do {
 			read_blocked=0;
 			readbytes=SSL_read(temp_ssl->client_ssl,buffer,readbyte_limit);
+			bla = SSL_get_error(temp_ssl->client_ssl,readbytes);
 			switch(SSL_get_error(temp_ssl->client_ssl,readbytes))
 			{
 			case SSL_ERROR_NONE:
@@ -228,13 +211,18 @@ int read_from_ssl_client(client *c, char* inbuf, int numbytes)
 			case SSL_ERROR_WANT_READ:
 				read_blocked=1;
 				break;
+			case SSL_ERROR_SYSCALL:
+				printf("ret val wat in ssl read "
+							"errno:%d ret_val:%d\n",errno, readbytes);
+				return 0;
+				break;
 			default:
-				count++;
-				printf("SSL read problem count %d\n", count);
 				err_val = ERR_get_error();
 				memset(err_string, 0, MAXLINE);
 				ERR_error_string(err_val, err_string);
-				printf("the error is : %s\n",err_string);
+				printf("SSL read error : %s\n",err_string);
+				printf("ret:%d err:%ld get_error:%ld \n",
+									readbytes, err_val, bla);
 				return 0;
 			}
 			// SSL_pending() does not work correctly when a silent handshake
@@ -294,6 +282,7 @@ void delete_client_from_ssl_list(int client_sock)
 {
 	sslobj* temp_ssl = NULL;
 	int ret_val, err_val;
+	int ssl_syscall_error = 0;
 	long bla;
 	char buffer[MAXLINE];
 
@@ -313,6 +302,14 @@ void delete_client_from_ssl_list(int client_sock)
 	while ( ret_val <= 0)
 	{
 		ret_val = SSL_shutdown(temp_ssl->client_ssl);
+//		printf("ssl shutdown ret val %d\n",ret_val);
+
+		if (ret_val == 0)
+		{
+			printf("ret val wat in ssl shutdown "
+								"errno:%d ret_val:%d\n",errno, ret_val);
+			continue;
+		}
 
 		err_val = SSL_get_error(temp_ssl->client_ssl, ret_val);
 		switch (err_val)
@@ -322,13 +319,25 @@ void delete_client_from_ssl_list(int client_sock)
 			break;
 		case SSL_ERROR_WANT_READ: break;
 		case SSL_ERROR_WANT_WRITE: break;
+		case SSL_ERROR_SYSCALL: // 5 = ssl_error_syscall
+			ssl_syscall_error = 1;
+			printf("SSL_shutdown got ssl_error_syscall "
+					"errno:%d ret_val:%d\n",errno, ret_val);
+			break;
+//			exit(EXIT_FAILURE);
 		default:
 			bla = ERR_get_error();
 			memset(buffer, 0, MAXLINE);
 			ERR_error_string(bla, buffer);
-			printf("error in delete client shutdown: %s\n",buffer);
+			printf("delete client shutdown error: ret:%d err:%d "
+					"get_error:%ld err_str:%s\n",
+					ret_val, err_val, bla, buffer);
 			return;
 		}
+
+		// syscall check and clean up all memory related to connection
+		if (ssl_syscall_error == 1)
+			break;
 	}
 	SSL_free(temp_ssl->client_ssl);
 	free (temp_ssl);
