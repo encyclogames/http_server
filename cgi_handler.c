@@ -61,8 +61,8 @@ int handle_cgi_request(client *c, char *uri)
 	char *inbufptr = NULL;
 	int content_length = 0, request_length = 0, nread = 0, ret_val = 0;
 	int received_message_body_length = 0, bytes_to_read = 0;
-		printf("cgi client inbuf:%sEND\n", c->inbuf);
-//		printf("uri:%sEND\n", uri);
+	//	printf("cgi client inbuf:%sEND\n", c->inbuf);
+	//		printf("uri:%sEND\n", uri);
 
 	request_end = strstr(c->inbuf, "\r\n\r\n");
 	// first check to see whether we have an incomplete request or not
@@ -90,10 +90,11 @@ int handle_cgi_request(client *c, char *uri)
 	// START message body buffering
 	if (content_length != 0)
 	{
-		printf("full size:%d\nreq len : %d\n", c->inbuf_size, message_body - c->inbuf);
+		//printf("full size:%d\nreq len : %d\n", c->inbuf_size,
+		//			message_body - c->inbuf);
 		request_length = message_body - c->inbuf;
 		received_message_body_length = c->inbuf_size - request_length;
-		printf("mes bdy len : %d\n", received_message_body_length);
+		//printf("mes bdy len : %d\n", received_message_body_length);
 
 		// prepare message body into new buffer to be written to exec child
 		message_body_buffer = malloc(content_length);
@@ -248,7 +249,7 @@ int set_env_vars(client *c, char *uri)
 
 int set_env_vars_from_uri(char *uri)
 {
-//	printf("folder:%s script:%s\n", cla.cgi_folder, cla.cgi_script);
+	//	printf("folder:%s script:%s\n", cla.cgi_folder, cla.cgi_script);
 
 	// keep these uris as tests for parsing and move them to a python test later
 	//	 char uri[] = "http://yourserver/www/cgi/search.cgi/misc/movies.mdb?sgi";
@@ -357,7 +358,7 @@ int set_http_env_vars(client *c)
 		{
 			setenv("CONTENT_LENGTH",strstr(request_line,":")+2,1);
 			content_length =  atoi(strstr(request_line,":")+2);
-			printf("GOT CL:%d\n",content_length);
+			//			printf("GOT CL:%d\n",content_length);
 		}
 
 		//		printf("Line %d : %s\n", i++, request_line);
@@ -661,7 +662,7 @@ int cgi_child_process_creator(client *c, char *message_body,
 	// parent
 	if (cgi_client_struct->child_pid > 0)
 	{
-//		fprintf(stdout, "Parent: Heading to select() loop.\n");
+		//		fprintf(stdout, "Parent: Heading to select() loop.\n");
 		close(cgi_client_struct->pipe_child2parent[WRITE_END]);
 		close(cgi_client_struct->pipe_parent2child[READ_END]);
 
@@ -672,7 +673,7 @@ int cgi_child_process_creator(client *c, char *message_body,
 			return -1;
 		}
 
-//		printf("finished writing message body.\n");
+		//		printf("finished writing message body.\n");
 
 		/* finished writing to spawn */
 		close(cgi_client_struct->pipe_parent2child[WRITE_END]);
@@ -715,7 +716,7 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 			read_start = 0;
 		}
 		buf[readret] = '\0'; /* nul-terminate string */
-//				fprintf(stdout, "Got from CGI: %s\n", buf);
+		//				fprintf(stdout, "Got from CGI: %s\n", buf);
 		if (c->ssl_connection == 0)
 		{
 			write(temp_cgi->client_sock, buf, strlen(buf));
@@ -742,24 +743,23 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 					CLOSE_CONN, SEND_HTTP_BODY);
 		}
 		// child error, so clean up child info in main server
+		waitpid(temp_cgi->child_pid, &status, WNOHANG);
+		LL_DELETE(cgi_client_list, temp_cgi);
+		free(temp_cgi);
+		reset_client_buffers(c);
 
 	}
 
 	if (readret == 0)
 	{
-		fprintf(stdout, "CGI spawned process returned with EOF as expected.\n");
-		//		waitpid(temp_cgi->child_pid, &status, WNOHANG);
-		//		status = WEXITSTATUS(status);
+		//fprintf(stdout, "CGI child process returned with expected EOF\n");
 
 		waitpid(temp_cgi->child_pid, &status, WNOHANG);
-		//		printf("waited on child after transfer finished\n");
 		LL_DELETE(cgi_client_list, temp_cgi);
 		free(temp_cgi);
 
 		reset_client_buffers(c);
 	}
-
-	// TO DO: check code for faulty read/broken pipe/incomplete child response
 }
 
 /* simple auxiliary function for debugging purposes
@@ -767,16 +767,16 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 void print_env_vars()
 {
 	// START ENV VAR CHECKS
-		printf("LIST OF ENVP:\n");
-		int i=0;
-		while(environ[i])
-		{
-//		if (i>35) //skip all OS related env vars
+	printf("LIST OF ENVP:\n");
+	int i=0;
+	while(environ[i])
+	{
+		//		if (i>35) //skip all OS related env vars
 		printf("%s\n", environ[i]);
 		i++;
-		}
-		printf("END\n");
-		// END ENV VAR CHECKS
+	}
+	printf("END\n");
+	// END ENV VAR CHECKS
 }
 
 
