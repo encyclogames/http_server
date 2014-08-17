@@ -52,10 +52,10 @@ else {
   }
 //  if (ret == EOF)
   if (ret > 0)
-    printf("got eof from ret %d GOOD<br>", ret);
+    printf("Write to file successful with length %d<br>", ret);
   else
   {
-    printf("got error from ret BAD<br>");
+    printf("Write to file failed<br>");
     errnum = errno;
     fprintf(stderr, "Value of errno: %d\n", errno);
     perror("Error printed by perror");
