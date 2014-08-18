@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <string.h>
 #define MAXLEN 80
 #define EXTRA 5
 /* 4 for field name "data", 1 for "=" */
@@ -32,6 +33,7 @@ char input[MAXINPUT], data[MAXINPUT];
 long len;
 int ret;
 int errnum;
+char *str_error;
 printf("%s%c%c\n",
 "Content-Type:text/html;charset=iso-8859-1",13,10);
 printf("<TITLE>Response</TITLE>\n");
@@ -59,7 +61,8 @@ else {
     errnum = errno;
     fprintf(stderr, "Value of errno: %d\n", errno);
     perror("Error printed by perror");
-    fprintf(stderr, "Error opening file: %s\n", strerror( errnum ));
+    str_error = strerror( errnum );
+    fprintf(stderr, "Error opening file: %s\n", str_error);
   }
   fclose(f);
   printf("<P>Thank you! The following contribution of yours has \
