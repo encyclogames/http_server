@@ -13,6 +13,7 @@ new_client(client_pool *p, int sock)
 	nc->request_incomplete = 0;
 	nc->close_connection = CLOSE_CONN;
 	nc->ssl_connection = 0;
+	nc->timeout_count = 0;
 
 	p->clients[sock] = nc;
 	p->num_clients++;
