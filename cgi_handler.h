@@ -70,8 +70,10 @@ cgi_client * new_cgi_client(int sock);
 int cgi_child_process_creator(client *c, char *message_body,
 		int content_length, cgi_client *cgi_client_struct);
 
-/*
- *
+/* handles the reading of response from a child process runnin a cgi script
+ * and piping it back to the client that requested it. The function also
+ * handles error checking for the child, and cleans up the child process(wait)
+ * after it has finished sending its response and terminated
  */
 void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p);
 
