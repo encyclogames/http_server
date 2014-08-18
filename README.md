@@ -11,9 +11,6 @@ errors. You are welcome to use this as a means to understand the inner workings 
 server though. I have tried to be as verbose as possible when it comes to documenting 
 what my code does.
 
-NOTE: this code is incomplete and i am working on it currently to make it feature complete and
-also add some form of robustness.
-
 Start the program with  the following :
 ```
 ./lisod <HTTP port> <HTTPS port> <log file> <lock file> <www folder> <CGI folder or script name> <private key file> <certificate file>
@@ -30,4 +27,4 @@ Start the program with  the following :
   <dd>certificate file – certificate file path</dd>
 </dl>
 This project uses a set of linked list macros called [utlist](http://troydhanson.github.io/uthash/utlist.html)
-
+Thsi project also has some code which is provided by the TAs of the 15-441 course 
