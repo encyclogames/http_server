@@ -101,6 +101,7 @@ typedef struct {
     char close_connection;
     char ssl_connection;
     char request_incomplete;
+    char timeout_count;
     char incomplete_request_buffer[MAXLINE];
     char hostname[MAX_HOSTNAME];
     char inbuf[MAX_LEN];
