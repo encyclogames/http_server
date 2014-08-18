@@ -23,6 +23,7 @@ void server_loop(int http_sock, int https_sock, client_pool *p);
 // client managing functions
 void accept_client(int sock, client_pool *p);
 void disconnect_client(client *c, client_pool *p);
+void timeout_client(client *c, client_pool *p);
 
 // Other utility functions
 int daemonize(char* lock_file);
@@ -96,7 +97,7 @@ int main( int argc, char *argv[] )
 	cgi_client_list = NULL;
 
 	// First daemonize the server process
-	// daemonize(cla.lock_file);
+	daemonize(cla.lock_file);
 
 	web_server();
 	return 0;
@@ -216,7 +217,8 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 			if (errno == EBADF)
 			{
 				memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
-				sprintf(debug_output,"Select error, bad file descriptor in sets");
+				sprintf(debug_output,"Select error, "
+						"bad file descriptor in sets");
 				log_into_file(debug_output);
 
 				exit(1);
@@ -237,8 +239,7 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 				if (c == NULL)
 					continue;
 
-				if (FD_ISSET(c->sock, &readfds))
-					handle_input(c, p);
+				timeout_client(c, p);
 			}
 		}
 
@@ -378,11 +379,13 @@ void handle_input(client *c, client_pool *p)
 		char remote_addr[20] = "";
 		char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
 		strcat(remote_addr, client_ip);
+		//printf("nread 0 disconnecting client ");
 		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
-		sprintf(debug_output,"nread 0 disconnecting client %s\n",
+		sprintf(debug_output,"read 0 bytes, disconnecting client %s\n",
 				client_ip);
 		log_into_file(debug_output);
 
+		c->close_connection = CLOSE_CONN;
 		disconnect_client(c, p);
 		return;
 	}
@@ -395,6 +398,10 @@ void handle_input(client *c, client_pool *p)
 		disconnect_client(c, p);
 		return;
 	}
+
+	// received client request, so reset its timeout counter
+	c->timeout_count = 0;
+
 	// check if we receive a broken/malformed request
 	if (strstr(inbuf,"\r\n") == NULL)
 	{
@@ -531,7 +538,16 @@ void handle_input(client *c, client_pool *p)
 	{
 		disconnect_client(c,p);
 	}
+}
 
+void timeout_client(client *c, client_pool *p)
+{
+	c->timeout_count ++;
+	if (c->timeout_count >=5)
+	{
+		c->close_connection = CLOSE_CONN;
+		disconnect_client(c, p);
+	}
 }
 
 void log_into_file(char *message)
@@ -551,7 +567,7 @@ void log_into_file(char *message)
 	strftime(time_str,256,"[%e-%b-%Y %T %Z]:", tm_date);
 
 	// log the message
-	fprintf(fp, "%s %s", time_str, message);
+	fprintf(fp, "%s %s\n", time_str, message);
 
 	fclose(fp);
 }
@@ -569,9 +585,14 @@ void signal_handler(int sig)
 	case SIGHUP:
 		/* rehash the server */
 		break;
+	case SIGKILL:
+		printf("got sigkill\n");
+		exit(0);
+		break;
 	case SIGTERM:
 		/* finalize and shutdown the server */
 		// TODO: liso_shutdown(NULL, EXIT_SUCCESS);
+		printf("got sigterm\n");
 		exit(0);
 		break;
 	default:
@@ -605,10 +626,15 @@ int daemonize(char* lock_file)
 
 	if (lfp < 0)
 	{
-		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
-		sprintf(debug_output,"Could not open lock file for lisod daemon");
-		log_into_file(debug_output);
-		exit(EXIT_FAILURE); /* can not open */
+		lfp = open(lock_file, O_RDWR|O_CREAT, 0640);
+
+		if (lfp < 0)
+		{
+			memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+			sprintf(debug_output,"Could not open lock file for lisod daemon");
+			log_into_file(debug_output);
+			exit(EXIT_FAILURE); /* can not open */
+		}
 	}
 
 	if (lockf(lfp, F_TLOCK, 0) < 0)

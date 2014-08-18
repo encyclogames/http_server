@@ -9,49 +9,6 @@
 
 extern char **environ;
 
-/**************** BEGIN CONSTANTS ***************/
-#define FILENAME_G "./cgi_script.py"
-#define BUF_SIZE 4096
-
-/* note: null terminated arrays (null pointer) */
-//char* ARGV_G[] = {
-//		FILENAME_G,
-//		NULL
-//};
-//
-//char* ENVP_G[] = {
-//		/*1*/   "CONTENT_LENGTH=",
-//		/*2*/	"CONTENT-TYPE=",
-//		/*3*/	"GATEWAY_INTERFACE=CGI/1.1",
-//		/*4*/	"PATH_INFO=",
-//		/*5*/	"QUERY_STRING=action=opensearch&search=HT&namespace=0&suggest=",
-//		/*6*/	"REMOTE_ADDR=128.2.215.22",
-//		/*7*/	"REMOTE_HOST=gs9671.sp.cs.cmu.edu", // not needed, so might remove it
-//		/*8*/	"REQUEST_METHOD=GET",
-//		/*9*/	"REQUEST_URI=",
-//		/*10*/	"SCRIPT_NAME=/w/api.php",
-//		/*11*/	"SERVER_NAME=",
-//		/*12*/	"SERVER_PORT=80",
-//		/*13*/	"SERVER_PROTOCOL=HTTP/1.1",
-//		/*14*/	"SERVER_SOFTWARE=Liso/1.0",
-//		/*15*/	"HOST_NAME=en.wikipedia.org",
-//		/*16*/	"HTTP_ACCEPT=/application/json, text/javascript, */*; q=0.01",
-//		/*17*/	"HTTP_REFERER=http://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=test+wikipedia+search",
-//		/*18*/	"HTTP_ACCEPT_ENCODING=gzip,deflate,sdch",
-//		/*19*/	"HTTP_ACCEPT_LANGUAGE=en-US,en;q=0.8",
-//		/*20*/	"HTTP_ACCEPT_CHARSET=ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-//		/*21*/	"HTTP_COOKIE=clicktracking-session=v7JnLVqLFpy3bs5hVDdg4Man4F096mQmY; mediaWiki.user.bucket%3Aext.articleFeedback-tracking=8%3Aignore; mediaWiki.user.bucket%3Aext.articleFeedback-options=8%3Ashow; mediaWiki.user.bucket:ext.articleFeedback-tracking=8%3Aignore; mediaWiki.user.bucket:ext.articleFeedback-options=8%3Ashow",
-//		/*22*/	"HTTP_USER_AGENT=Mozilla/5.0 (X11; Linux i686) AppleWebKit/535.1 (KHTML, like Gecko) Chrome/14.0.835.186 Safari/535.1",
-//		/*23*/	"HTTP_CONNECTION=keep-alive",
-//		/*24*/	"HTTP_HOST=en.wikipedia.org",
-//		/*25*/NULL
-//};
-/**************** END CONSTANTS ***************/
-
-
-
-//////////// SELF CODE
-
 
 int handle_cgi_request(client *c, char *uri)
 {
@@ -69,9 +26,10 @@ int handle_cgi_request(client *c, char *uri)
 	if (request_end != NULL)
 	{
 		c->request_incomplete = 0;
-		message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
-		if (message_body == NULL)
-			printf("msg bdy is null after check");
+		//message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
+		message_body = request_end + 4;
+		//if (message_body == NULL)
+		//	printf("msg bdy is null after check");
 	}
 	// buffer does not contain "\r\n\r\n"
 	else
@@ -87,7 +45,8 @@ int handle_cgi_request(client *c, char *uri)
 
 	content_length = set_http_env_vars(c);
 
-	// START message body buffering
+	// START message body buffering only if we know that we have received it
+	// due to the content-length header field being set
 	if (content_length != 0)
 	{
 		//printf("full size:%d\nreq len : %d\n", c->inbuf_size,
@@ -172,7 +131,8 @@ int handle_cgi_request(client *c, char *uri)
 	LL_APPEND(cgi_client_list, cgiobj);
 
 	// Setup/exec child cgi using the cgi client obj
-	ret_val = cgi_child_process_creator(c, message_body_buffer, content_length, cgiobj);
+	ret_val = cgi_child_process_creator(c, message_body_buffer,
+			content_length, cgiobj);
 
 	if (ret_val == -1)
 	{
@@ -249,8 +209,6 @@ int set_env_vars(client *c, char *uri)
 
 int set_env_vars_from_uri(char *uri)
 {
-	//	printf("folder:%s script:%s\n", cla.cgi_folder, cla.cgi_script);
-
 	// keep these uris as tests for parsing and move them to a python test later
 	//	 char uri[] = "http://yourserver/www/cgi/search.cgi/misc/movies.mdb?sgi";
 	// char uri[] = "http://localhost:8080/examples/www/cgi/HelloWorld/hello+there/fred";
@@ -303,18 +261,19 @@ int set_http_env_vars(client *c)
 {
 	char *request_line;
 	int content_length = 0;
-	//	char *message_body = strstr(c->inbuf, "\r\n\r\n")+4;
 	request_line = strtok(c->inbuf, "\r\n");
 	// parse each line for headers that need to be supported
-	//		int i = 0;
 	while (request_line != NULL)
 	{
-		//		printf("iter %d\n",i++);
 		if (strstr(request_line,"Connection:") != NULL)
 		{
 			if (strcmp(strstr(request_line,":")+2,"close") == 0)
 			{
-				c->close_connection = 1;
+				c->close_connection = CLOSE_CONN;
+			}
+			else if (strcmp(strstr(request_line,":")+2,"keep-alive") == 0)
+			{
+				c->close_connection = DONT_CLOSE_CONN;
 			}
 			setenv("HTTP_CONNECTION",strstr(request_line,":")+2,1);
 		}
@@ -358,14 +317,10 @@ int set_http_env_vars(client *c)
 		{
 			setenv("CONTENT_LENGTH",strstr(request_line,":")+2,1);
 			content_length =  atoi(strstr(request_line,":")+2);
-			//			printf("GOT CL:%d\n",content_length);
 		}
-
 		//		printf("Line %d : %s\n", i++, request_line);
 		request_line = strtok(NULL, "\r\n");
 	}
-
-
 	return content_length;
 }
 
@@ -378,7 +333,7 @@ new_cgi_client(int sock)
 
 	if (nc == NULL)
 	{
-		printf("malloc failed for cgi_client\n");
+		log_into_file("malloc failed for cgi_client\n");
 		return nc;
 	}
 	memset(nc, 0, sizeof(cgi_client));
@@ -390,23 +345,20 @@ new_cgi_client(int sock)
 
 	if (pipe(nc->pipe_parent2child) < 0)
 	{
-		fprintf(stderr, "Error creating pipe for parent2child.\n");
+		log_into_file("Error creating pipe for parent2child.\n");
 		free(nc);
 		return NULL;
 	}
 
 	if (pipe(nc->pipe_child2parent) < 0)
 	{
-		fprintf(stderr, "Error creating pipe for child2parent.\n");
+		log_into_file("Error creating pipe for child2parent.\n");
 		free(nc);
 		return NULL;
 	}
 
 	return nc;
 }
-
-///////////// END SELF CODE
-
 
 
 /**************** BEGIN UTILITY FUNCTIONS ***************/
@@ -495,99 +447,6 @@ processes.\n");
 /**************** END UTILITY FUNCTIONS ***************/
 
 
-
-
-//int run_main(int argc, char * argv[])
-//{
-//	/*************** BEGIN VARIABLE DECLARATIONS **************/
-//	pid_t pid;
-//	int stdin_pipe[2];
-//	int stdout_pipe[2];
-//	char buf[BUF_SIZE];
-//	int readret;
-//	/*************** END VARIABLE DECLARATIONS **************/
-//
-//	/*************** BEGIN PIPE **************/
-//	/* 0 can be read from, 1 can be written to */
-//	if (pipe(stdin_pipe) < 0)
-//	{
-//		fprintf(stderr, "Error piping for stdin.\n");
-//		return EXIT_FAILURE;
-//	}
-//
-//	if (pipe(stdout_pipe) < 0)
-//	{
-//		fprintf(stderr, "Error piping for stdout.\n");
-//		return EXIT_FAILURE;
-//	}
-//	/*************** END PIPE **************/
-//
-//	/*************** BEGIN FORK **************/
-//	pid = fork();
-//	/* not good */
-//	if (pid < 0)
-//	{
-//		fprintf(stderr, "Something really bad happened when fork()ing.\n");
-//		return EXIT_FAILURE;
-//	}
-//
-//	/* child, setup environment, execve */
-//	if (pid == 0)
-//	{
-//		/*************** BEGIN EXECVE ****************/
-//		close(stdout_pipe[0]);
-//		close(stdin_pipe[1]);
-//		dup2(stdout_pipe[1], fileno(stdout));
-//		dup2(stdin_pipe[0], fileno(stdin));
-//		/* you should probably do something with stderr */
-//
-//		/* pretty much no matter what, if it returns bad things happened... */
-//		if (execve(FILENAME, ARGV, ENVP))
-//		{
-//			execve_error_handler();
-//			fprintf(stderr, "Error executing execve syscall.\n");
-//			return EXIT_FAILURE;
-//		}
-//		/*************** END EXECVE ****************/
-//	}
-//
-//	if (pid > 0)
-//	{
-//		fprintf(stdout, "Parent: Heading to select() loop.\n");
-//		close(stdout_pipe[1]);
-//		close(stdin_pipe[0]);
-//
-//		if (write(stdin_pipe[1], POST_BODY, strlen(POST_BODY)) < 0)
-//		{
-//			fprintf(stderr, "Error writing to spawned CGI program.\n");
-//			return EXIT_FAILURE;
-//		}
-//
-//		close(stdin_pipe[1]); /* finished writing to spawn */
-//
-//		/* you want to be looping with select() telling you when to read */
-//		while((readret = read(stdout_pipe[0], buf, BUF_SIZE-1)) > 0)
-//		{
-//			buf[readret] = '\0'; /* nul-terminate string */
-//			fprintf(stdout, "Got from CGI: %s\n", buf);
-//		}
-//
-//		close(stdout_pipe[0]);
-//		close(stdin_pipe[1]);
-//
-//		if (readret == 0)
-//		{
-//			fprintf(stdout, "CGI spawned process returned with EOF as expected.\n");
-//			return EXIT_SUCCESS;
-//		}
-//	}
-//	/*************** END FORK **************/
-//
-//	fprintf(stderr, "Process exiting, badly...how did we get here!?\n");
-//	return EXIT_FAILURE;
-//}
-
-
 int cgi_child_process_creator(client *c, char *message_body,
 		int content_length, cgi_client *cgi_client_struct)
 {
@@ -597,7 +456,7 @@ int cgi_child_process_creator(client *c, char *message_body,
 	/* not good */
 	if (cgi_client_struct->child_pid < 0)
 	{
-		fprintf(stderr, "Something really bad happened when fork()ing.\n");
+		log_into_file("Something really bad happened when fork()ing.\n");
 		LL_DELETE(cgi_client_list, cgi_client_struct);
 		return -1;
 	}
@@ -610,7 +469,7 @@ int cgi_child_process_creator(client *c, char *message_body,
 		close(cgi_client_struct->pipe_parent2child[WRITE_END]);
 		dup2(cgi_client_struct->pipe_child2parent[WRITE_END], fileno(stdout));
 		dup2(cgi_client_struct->pipe_parent2child[READ_END], fileno(stdin));
-		/* you should probably do something with stderr */
+		/* probably do something with stderr */
 
 		char script_name[MAX_FILENAME_LEN];
 		memset(script_name, 0, MAX_FILENAME_LEN);
@@ -642,13 +501,14 @@ int cgi_child_process_creator(client *c, char *message_body,
 			{
 				script_name_env_ptr += 4; //skip the "/cgi" in script name
 			}
-			//			fprintf(stderr, "edited %s\n", script_name_env_ptr);
 			strcat(filename, script_name_env_ptr);
 		}
 		char* argv_child[] = {filename,NULL};
 
 		/* pretty much no matter what, if it returns bad things happened... */
-		fprintf(stderr, "RUNNING file %s\n", filename);
+		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+		sprintf(debug_output,"RUNNING file %s", filename);
+		log_into_file(debug_output);
 		if (execve(filename, argv_child, environ))
 		{
 			execve_error_handler();
@@ -662,18 +522,17 @@ int cgi_child_process_creator(client *c, char *message_body,
 	// parent
 	if (cgi_client_struct->child_pid > 0)
 	{
-		//		fprintf(stdout, "Parent: Heading to select() loop.\n");
 		close(cgi_client_struct->pipe_child2parent[WRITE_END]);
 		close(cgi_client_struct->pipe_parent2child[READ_END]);
 
 		if (write(cgi_client_struct->pipe_parent2child[WRITE_END],
 				message_body, content_length) < 0)
 		{
-			fprintf(stderr, "Error writing to spawned CGI program.\n");
+			memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
+			sprintf(debug_output,"Error writing to spawned CGI program.\n");
+			log_into_file(debug_output);
 			return -1;
 		}
-
-		//		printf("finished writing message body.\n");
 
 		/* finished writing to spawn */
 		close(cgi_client_struct->pipe_parent2child[WRITE_END]);
@@ -684,21 +543,19 @@ int cgi_child_process_creator(client *c, char *message_body,
 	}
 	/*************** END FORK **************/
 
-	fprintf(stderr, "Process exiting, badly...how did we get here!?\n");
+	fprintf(stderr, "Process exiting badly, check fork branch in handle_cgi\n");
 	return -1;
 }
 
 void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 {
 	client *c = p->clients[temp_cgi->client_sock];
-	//	printf("got it from client pool using cgi obj\n");
 
 	char buf[MAX_LEN];
 	int readret, status;
 	// flag to check if read is the first from child or not
 	char read_start = 1;
 	char response[] = "HTTP/1.1 200 OK\r\n";
-	//	char response_end = "";
 
 	while((readret = read(temp_cgi->pipe_child2parent[READ_END],
 			buf, MAX_LEN-1)) > 0)
@@ -747,12 +604,11 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 		LL_DELETE(cgi_client_list, temp_cgi);
 		free(temp_cgi);
 		reset_client_buffers(c);
-
 	}
 
 	if (readret == 0)
 	{
-		//fprintf(stdout, "CGI child process returned with expected EOF\n");
+		log_into_file("CGI child process returned with expected EOF");
 
 		waitpid(temp_cgi->child_pid, &status, WNOHANG);
 		LL_DELETE(cgi_client_list, temp_cgi);
@@ -766,17 +622,15 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
  */
 void print_env_vars()
 {
-	// START ENV VAR CHECKS
 	printf("LIST OF ENVP:\n");
 	int i=0;
 	while(environ[i])
 	{
-		//		if (i>35) //skip all OS related env vars
+		//		if (i>38) //skip all OS related env vars
 		printf("%s\n", environ[i]);
 		i++;
 	}
 	printf("END\n");
-	// END ENV VAR CHECKS
 }
 
 
