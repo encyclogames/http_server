@@ -9,3 +9,6 @@ client_pool: client_pool.o
 
 clean:
 	rm -f *.o lisod
+
+cleano:
+	rm -f *.o
