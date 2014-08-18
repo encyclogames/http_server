@@ -10,19 +10,19 @@ void write_to_client(client *c, char* buffer, int numbytes);
 
 int handle_GET(client *c, char *uri, char* www_folder)
 {
-	//	printf("GET GOT (%s)\n",c->inbuf);
 	char* index = "/";
 	char* index_html = "/index.html";
 	char* request_end;
 	char* request_line;
 	char* one;
 	char* last_request_line_read;
-	//int close_connection = 0;
-	//char header_name[32],header_value[MAXLINE];
 	char file_location[MAXLINE];
 	memset(file_location,0,MAXLINE);
 	char file_buffer[MAX_LEN];
 	int len;
+	FILE *fp;
+	char header_str[MAX_HEADER_LEN];
+	char *header_ptr;
 
 	request_end = strstr(c->inbuf, "\r\n\r\n");
 	// first check to see whether we have an incomplete request or not
@@ -37,7 +37,7 @@ int handle_GET(client *c, char *uri, char* www_folder)
 		{
 			// at this point we know we have an incomplete request
 			c->request_incomplete = 1; // incomplete GET
-			printf("INCOMPLETE GET REQUEST FOUND\n");
+			log_into_file("INCOMPLETE GET REQUEST FOUND\n");
 		}
 		else
 		{
@@ -83,7 +83,7 @@ int handle_GET(client *c, char *uri, char* www_folder)
 		{
 			if (strcmp(strstr(request_line,":")+1,"close") == 0)
 			{
-				c->close_connection = 1;
+				c->close_connection = CLOSE_CONN;
 			}
 			else if (strcasecmp(strstr(request_line,":")+2,
 					"keep-alive") == 0)
@@ -124,22 +124,19 @@ int handle_GET(client *c, char *uri, char* www_folder)
 		sprintf(file_location, "%s%s", www_folder, uri);
 	}
 
-	FILE *fp;
-	//	printf("File location : %s\n", file_location);
+
 	fp = fopen(file_location,"r"); // read mode
 	if( fp == NULL )
 	{
-		//		printf("something not right %s\n", strerror(errno));
 		http_error(c, uri, "404", "Not Found",
 				"This file doesn't exist on this server", 0, 1);
 		reset_client_buffers(c);
 		return 0;
 	}
 
-	char header_str[MAX_HEADER_LEN];//, body[MAX_LEN];
+
 	memset(header_str, 0 , MAX_HEADER_LEN);
-	//memset(body, 0 , MAX_LEN);
-	char *header_ptr = header_str;
+	header_ptr = header_str;
 
 	create_http_response_header(header_ptr, fp, file_location);
 	write_to_client(c, header_str, strlen(header_str));
@@ -154,8 +151,6 @@ int handle_GET(client *c, char *uri, char* www_folder)
 		write_to_client(c, file_buffer, len);
 		len = fread(file_buffer,1, sizeof(file_buffer),fp);
 	}
-	//	printf("The contents of %s file are :\n", file_location);
-	//	printf("%s\n",file_buffer);
 
 	fclose(fp);
 
@@ -163,8 +158,7 @@ int handle_GET(client *c, char *uri, char* www_folder)
 	// for next request due to persistent connection
 
 	reset_client_buffers(c);
-	printf("GET OK for uri: %s\n", uri);
-	char debug_output[MAXLINE];
+	memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 	sprintf(debug_output,"GET OK for uri: %s\n", uri);
 	log_into_file(debug_output);
 	return c->close_connection;
@@ -172,17 +166,13 @@ int handle_GET(client *c, char *uri, char* www_folder)
 
 int handle_HEAD(client *c, char *uri, char* www_folder)
 {
-	//	http_error(c, "HEAD", "501", "Not Implemented", "This method is unimplemented", 0, 0);
-	//	return;
-	printf("start handle HEAD\n");
-	//	printf(c->inbuf);
+	//printf("start handle HEAD\n");
 	char* index = "/";
 	char* index_html = "/index.html";
 	char* request_end;
 	char* request_line;
-	char* one;
+	char* request_line_end;
 	char* last_request_line_read;
-	//char header_name[32],header_value[MAXLINE];
 	char file_location[MAXLINE];
 	memset(file_location,0,MAXLINE);
 
@@ -199,7 +189,7 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 		{
 			// at this point we know we have an incomplete request
 			c->request_incomplete = 2; // incomplete HEAD
-			printf("INCOMPLETE HEAD REQUEST FOUND\n");
+			log_into_file("INCOMPLETE HEAD REQUEST FOUND\n");
 		}
 		else
 		{
@@ -215,11 +205,11 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 	// requests together to be able to parse them properly
 	if (strlen(c->incomplete_request_buffer) != 0)
 	{
-		one = strstr(c->inbuf, "\r\n");
-		*one = '\0';
+		request_line_end = strstr(c->inbuf, "\r\n");
+		*request_line_end = '\0';
 		strcat(c->incomplete_request_buffer, c->inbuf);
-		printf("split line back again %s\n",c->incomplete_request_buffer);
-		*one = '\r';
+		//printf("split line back again %s\n",c->incomplete_request_buffer);
+		*request_line_end = '\r';
 
 		if (strstr(c->incomplete_request_buffer,"Connection") != NULL)
 		{
@@ -230,7 +220,7 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 
 	request_line = strtok(c->inbuf, "\r\n");
 	// parse each line for headers that need to be supported
-	int i = 0;
+	//int i = 0;
 	while (request_line != NULL)
 	{
 		last_request_line_read = request_line;
@@ -244,7 +234,7 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 			}
 		}
 
-		printf("Line %d : %s %d\n", i++, request_line,c->close_connection);
+		//printf("Line %d : %s %d\n", i++, request_line,c->close_connection);
 		//		sscanf(request_line, "%s %s", header_name, header_value);
 		//		printf("Line %d : %s %s\n", i++, header_name, header_value);
 		request_line = strtok(NULL, "\r\n");
@@ -258,7 +248,6 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 		memcpy(c->incomplete_request_buffer,
 				last_request_line_read,
 				strlen(last_request_line_read));
-		//		memcpy(c->inbuf,last_request_line_read,strlen(last_request_line_read));
 		memset(c->inbuf, 0, MAX_HEADER_LEN);
 		c->inbuf_size = 0;
 		return 0; //dont close connection
@@ -297,7 +286,6 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 	create_http_response_header(header_ptr, fp, file_location);
 	write_to_client(c, header_str, strlen(header_str));
 	//	printf("The HEAD response header is as follows: \n%s",header_str);
-	//printf("doen parsing\n");
 	fclose(fp);
 
 	reset_client_buffers(c);
@@ -308,20 +296,14 @@ int handle_HEAD(client *c, char *uri, char* www_folder)
 
 int handle_POST(client *c, char *uri, char* www_folder)
 {
-	printf("POST DATA IN FUNCTION:\n%s\n",c->inbuf);
-	http_error(c, "POST", "501", "Not Implemented", "This method is unimplemented", 0, 1);
-	//	char debug_output[MAXLINE];
+	http_error(c, "POST", "501", "Not Implemented",
+			"This method is unimplemented", 0, 1);
 	int close_connection = 0;
-
-	//	printf(c->inbuf);
-	//	printf("\npost request end\n");
 
 	//	char* index = "/";
 	//	char* index_html = "/index.html";
 	//	char* request_end;
 	char* request_line;
-	//	char close_connection = 0;
-	//	char header_name[32],header_value[MAXLINE];
 	char file_location[MAXLINE];
 	memset(file_location,0,MAXLINE);
 	//	char file_buffer[MAX_HEADER_LEN];
@@ -339,10 +321,9 @@ int handle_POST(client *c, char *uri, char* www_folder)
 		if (strstr(request_line,"Content-Length") != NULL)
 		{
 			post_content_len = atoi(strstr(request_line,":")+1);
-			printf("Content length got %d \n", post_content_len); //debug output
 		}
 		//Log into file
-		//		sprintf(debug_output,"Line %d : %s\n", i++, request_line); //debug output
+		//		sprintf(debug_output,"Line %d : %s\n", i++, request_line);
 		//		log_into_file(debug_output);
 		request_line = strtok(NULL, "\r\n");
 	}
@@ -352,12 +333,13 @@ int handle_POST(client *c, char *uri, char* www_folder)
 	if (post_content_len == 0)
 	{
 		http_error(c, uri, "411", "Length Required",
-				"This POST request is missing Content-Length sent to ", 0, 1);
+				"This POST request is missing Content-Length sent to ",
+				DONT_CLOSE_CONN, SEND_HTTP_BODY);
 	}
 
 	// get location of cgi script
-	sprintf(file_location, ".%s%s", www_folder, uri);
-	printf("LOCATION OF CGI SCRIPT:%s\n",file_location);
+	//sprintf(file_location, ".%s%s", www_folder, uri);
+	//printf("LOCATION OF CGI SCRIPT:%s\n",file_location);
 
 	//log into file
 	//	sprintf(debug_output,"POST OK\n");
@@ -378,7 +360,7 @@ int handle_POST(client *c, char *uri, char* www_folder)
  * 					this function will read and get details
  * 	return:
  * 	1 if the file is not found on the server,0 the header has been
- * 				successfully created
+ * 	successfully created
  */
 void create_http_response_header(char *header, FILE *fp, char* filepath)
 {
@@ -393,7 +375,6 @@ void create_http_response_header(char *header, FILE *fp, char* filepath)
 
 	//create the header part of the response
 	length = sprintf(header, "HTTP/1.1 200 OK\r\n");
-	// NEW SAFER STRING COMBINING VERSION
 	length += sprintf(header+length, "Server: Liso/1.0\r\n");
 	length += sprintf(header+length, "Connection: keep-alive\r\n");
 
@@ -412,7 +393,8 @@ void create_http_response_header(char *header, FILE *fp, char* filepath)
 	strftime(time_str,256,"%a, %e %b %Y %H:%M:%S %Z", tm_last_modified);
 
 	length += sprintf(header+length, "Last-Modified: %s\r\n",time_str);
-	length += sprintf(header+length, "Content-Length: %lld\r\n",(long long) file_stats.st_size);
+	length += sprintf(header+length, "Content-Length: %lld\r\n",
+			(long long) file_stats.st_size);
 	//	printf("File size: %lld bytes\n",(long long) file_stats.st_size);
 	//	printf("Last file modification:   %s", ctime(&file_stats.st_mtim)); //what in the world ??? mtim ???
 
@@ -422,36 +404,6 @@ void create_http_response_header(char *header, FILE *fp, char* filepath)
 
 	//end response header with newline
 	length += sprintf(header+length, "\r\n");
-
-
-	// OLD UNSAFE STRING COMBINING VERSION VERSION
-	//	sprintf(header, "%sServer: Liso/1.0\r\n",header);
-	//	sprintf(header, "%sConnection: keep-alive\r\n",header);
-	//
-	//	time( &rawtime );
-	//	tm_date = gmtime( &rawtime );
-	//	memset(time_str,0,256);
-	//	strftime(time_str,256,"%a, %e %b %Y %H:%M:%S %Z", tm_date);
-	//	sprintf(header, "%sDate: %s\r\n",header, time_str);
-	//
-	//	// now need content length, last modified
-	//	struct stat file_stats;
-	//	fstat(fd,&file_stats);
-	//	lmtime = file_stats.st_mtim;
-	//	tm_last_modified = gmtime( &lmtime.tv_sec );
-	//	memset(time_str,0,256);
-	//	strftime(time_str,256,"%a, %e %b %Y %H:%M:%S %Z", tm_last_modified);
-	//	sprintf(header, "%sLast-Modified: %s\r\n",header, time_str);
-	//	sprintf(header, "%sContent-Length: %lld\r\n",header, (long long) file_stats.st_size);
-	//	//	printf("File size: %lld bytes\n",(long long) file_stats.st_size);
-	//	//	printf("Last file modification:   %s", ctime(&file_stats.st_mtim)); //what in the world ??? mtim ???
-	//
-	//	//   content type,
-	//	get_mimetype(filepath, mime_type);
-	//	sprintf(header, "%sContent-Type: %s\r\n",header, mime_type);
-	//
-	//	//end response header with newline
-	//	sprintf(header, "%s\r\n",header);
 }
 
 /*
@@ -550,7 +502,6 @@ void http_error(client *c, char *cause, char *errnum,
 			write_to_ssl_client(c, body, strlen(body));
 		}
 	}
-	// remember to set the client socket to closed
 }
 
 
