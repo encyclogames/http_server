@@ -1,5 +1,8 @@
 # taken from https://gist.github.com/octocat/9257657
 
+# Auto detect text files and perform LF normalization
+* text=auto
+
 #local files
 *.crt
 *.key

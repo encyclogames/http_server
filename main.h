@@ -1,11 +1,11 @@
 /*
- * lisod.h
+ * main.h
  *
- *      Author: Fahad Islam
+ *      Copyright (c) <2013> <Fahad Islam>
  */
 
-#ifndef LISOD_H_
-#define LISOD_H_
+#ifndef MAIN_H_
+#define MAIN_H_
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,8 +27,6 @@
 #include <sys/wait.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 
 
 #include "utlist.h"
@@ -50,19 +48,16 @@
 #define DONT_SEND_HTTP_BODY 0
 
 typedef struct {
-    int http_port;
-    int https_port;
-    char log_file[MAX_FILENAME_LEN];
-    char lock_file[MAX_FILENAME_LEN];
-    char www_folder[MAX_FILENAME_LEN];
-    char cgi_script[MAX_FILENAME_LEN];
-    char cgi_folder[MAX_FILENAME_LEN];
-    char private_key_file[MAX_FILENAME_LEN];
-    char certificate_file[MAX_FILENAME_LEN];
+	int http_port;
+	char log_file[MAX_FILENAME_LEN];
+	char www_folder[MAX_FILENAME_LEN];
+	char cgi_script[MAX_FILENAME_LEN];
+	char cgi_folder[MAX_FILENAME_LEN];
 } cmd_line_args;
 
-cmd_line_args cla; // global scope
-char debug_output[MAX_DEBUG_MSG_LEN]; // stores the debug message to log in file
+// global scope variables
+cmd_line_args cla; // the command line arguments
+char debug_output[MAX_DEBUG_MSG_LEN]; // debug message to log into log file
 
 /*
  * the client struct that stores the details of the client
@@ -75,10 +70,6 @@ char debug_output[MAX_DEBUG_MSG_LEN]; // stores the debug message to log in file
  * "close_connection" notes whether the client has sent a "Connection:Close"
  * in its http header or indicating that my server should not remove it
  * from its persistent connection set of file descriptors
- *
- * "ssl_connection" is a flag variable that indicates whether the client is
- * using an ssl connection or not when connecting to the server. This is
- * necessary for me to be able to wrap the connection with the SSL API.
  *
  * "request_incomplete" is a variable that saves the state of a client when the
  * server receives a incomplete request from it. When a request is incomplete,
@@ -95,19 +86,18 @@ char debug_output[MAX_DEBUG_MSG_LEN]; // stores the debug message to log in file
  *
  */
 typedef struct {
-    int sock;
-    struct sockaddr_in cliaddr;
-    unsigned int inbuf_size;
-    char close_connection;
-    char ssl_connection;
-    char request_incomplete;
-    char timeout_count;
-    char incomplete_request_buffer[MAXLINE];
-    char hostname[MAX_HOSTNAME];
-    char inbuf[MAX_LEN];
+	int sock;
+	struct sockaddr_in cliaddr;
+	unsigned int inbuf_size;
+	char close_connection;
+	char request_incomplete;
+	char timeout_count;
+	char incomplete_request_buffer[MAXLINE];
+	char hostname[MAX_HOSTNAME];
+	char inbuf[MAX_LEN];
 } client;
 
 void log_into_file(char *message);
 void set_hostname(client *c);
 
-#endif /* LISOD_H_ */
+#endif /* MAIN_H_ */

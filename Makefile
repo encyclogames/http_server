@@ -1,14 +1,14 @@
 CFLAGS=-Wall -DDEBUG -g -og
 LDFLAGS=-g
 
-all: lisod
+all: main
 
-lisod: lisod.o client_pool.o handler.o ssl_handler.o cgi_handler.o -lssl
+main: main.o client_pool.o handler.o cgi_handler.o
 
 client_pool: client_pool.o
 
 clean:
-	rm -f *.o lisod
+	rm -f *.o server
 
 cleano:
 	rm -f *.o

@@ -1,13 +1,13 @@
 /*
  * handler.h
  *
- *      Author: Fahad Islam
+ *      Copyright (c) <2013> <Fahad Islam>
  */
 
 #ifndef HANDLER_H_
 #define HANDLER_H_
 
-#include "lisod.h"
+#include "main.h"
 
 // HTTP REQUEST HANDLERS
 // all of them return a flag signifying whether the client just processed

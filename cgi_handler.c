@@ -1,21 +1,21 @@
 /*
  * cgi_handler.c
  *
- *      Author: Fahad Islam
+ *      Copyright (c) <2013> <Fahad Islam>
  */
-
 
 #include "cgi_handler.h"
 
 extern char **environ;
 
-
 int handle_cgi_request(client *c, char *uri)
 {
 	char *request_end = NULL;
-	char *message_body = NULL;
+	char *message_body_ptr = NULL;
 	char *message_body_buffer = NULL;
-	char *inbufptr = NULL;
+	//	char *inbufptr = NULL;
+
+	// nread = number of bytes read, ret_val = return value
 	int content_length = 0, request_length = 0, nread = 0, ret_val = 0;
 	int received_message_body_length = 0, bytes_to_read = 0;
 	//	printf("cgi client inbuf:%sEND\n", c->inbuf);
@@ -27,7 +27,7 @@ int handle_cgi_request(client *c, char *uri)
 	{
 		c->request_incomplete = 0;
 		//message_body = strstr(c->inbuf, "\r\n\r\n") + 4;
-		message_body = request_end + 4;
+		message_body_ptr = request_end + 4;
 		//if (message_body == NULL)
 		//	printf("msg bdy is null after check");
 	}
@@ -51,7 +51,7 @@ int handle_cgi_request(client *c, char *uri)
 	{
 		//printf("full size:%d\nreq len : %d\n", c->inbuf_size,
 		//			message_body - c->inbuf);
-		request_length = message_body - c->inbuf;
+		request_length = message_body_ptr - c->inbuf;
 		received_message_body_length = c->inbuf_size - request_length;
 		//printf("mes bdy len : %d\n", received_message_body_length);
 
@@ -66,7 +66,7 @@ int handle_cgi_request(client *c, char *uri)
 			return 1;
 		}
 		memset(message_body_buffer, 0, content_length);
-		memcpy(message_body_buffer, message_body, received_message_body_length);
+		memcpy(message_body_buffer, message_body_ptr, received_message_body_length);
 
 		if ( received_message_body_length < content_length)
 		{
@@ -75,47 +75,37 @@ int handle_cgi_request(client *c, char *uri)
 			bytes_to_read = content_length - received_message_body_length;
 			c->inbuf_size = 0;
 			memset(c->inbuf, 0, sizeof(c->inbuf));
-			inbufptr = c->inbuf;
+			//			inbufptr = c->inbuf;
 
-			if (c->ssl_connection == 1)
+			// keep reading until we get the whole message body
+			while (nread < bytes_to_read)
 			{
-				nread = read_from_ssl_client(c, inbufptr, bytes_to_read);
+				nread = read(c->sock, c->inbuf, bytes_to_read);
+				if (nread == -1)
+				{
+					if (errno == EAGAIN || errno == EWOULDBLOCK)
+					{
+						nread = 0;
+						continue;
+					}
+					else
+					{
+						http_error( c, "Error in reading message body from client",
+								"500", "Internal Server Error",
+								"An internal server error has occurred ",
+								CLOSE_CONN, SEND_HTTP_BODY);
+						return 1;
+					}
+
+				}
 				memcpy(message_body_buffer + received_message_body_length,
 						c->inbuf, nread);
-				//printf("out of ssl read in cgi handler: %sEND\n", inbufptr);
+				received_message_body_length += nread;
+				bytes_to_read -= nread;
+				nread = 0; // reset for next read
+				//				inbufptr = c->inbuf;
 			}
-			else
-			{
-				// keep reading until we get the whole message body
-				while (nread < bytes_to_read)
-				{
-					nread = read(c->sock, c->inbuf, bytes_to_read);
-					if (nread == -1)
-					{
-						if (errno == EAGAIN || errno == EWOULDBLOCK)
-						{
-							nread = 0;
-							continue;
-						}
-						else
-						{
-							http_error( c, "Error in reading message body from client",
-									"500", "Internal Server Error",
-									"An internal server error has occurred ",
-									CLOSE_CONN, SEND_HTTP_BODY);
-							return 1;
-						}
-
-					}
-					memcpy(message_body_buffer + received_message_body_length,
-							c->inbuf, nread);
-					received_message_body_length += nread;
-					bytes_to_read -= nread;
-					nread = 0; // reset for next read
-					inbufptr = c->inbuf;
-				}
-				//printf("out of basic read in cgi handler: %sEND\n", inbufptr);
-			}
+			//printf("out of basic read in cgi handler: %sEND\n", inbufptr);
 		}
 	} // END message body buffering
 
@@ -159,16 +149,8 @@ int set_env_vars(client *c, char *uri)
 	// ints to a char and then set the env var to the typecast string
 	char env_var_typecast[10];
 	memset(env_var_typecast, 0, 10);
-	if (c->ssl_connection == 1)
-	{
-		sprintf (env_var_typecast, "%d", cla.https_port);
-		setenv("SERVER_PORT",env_var_typecast,1);
-	}
-	else
-	{
-		sprintf (env_var_typecast, "%d", cla.http_port);
-		setenv("SERVER_PORT",env_var_typecast,1);
-	}
+	sprintf (env_var_typecast, "%d", cla.http_port);
+	setenv("SERVER_PORT",env_var_typecast,1);
 
 	char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
 	setenv("REMOTE_ADDR",client_ip,1);
@@ -199,19 +181,15 @@ int set_env_vars(client *c, char *uri)
 				DONT_CLOSE_CONN, SEND_HTTP_BODY);
 		return -1;
 	}
-	//	char *x;
-	//	/* set environment variable _EDC_ANSI_OPEN_DEFAULT to "Y" */
-	//	setenv("_EDC_ANSI_OPEN_DEFAULT","Y",1);
-	//	/* set x to the current value of the _EDC_ANSI_OPEN_DEFAULT*/
-	//	x = getenv("_EDC_ANSI_OPEN_DEFAULT");
+
 	return 0;
 }
 
 int set_env_vars_from_uri(char *uri)
 {
-	// keep these uris as tests for parsing and move them to a python test later
-	//	 char uri[] = "http://yourserver/www/cgi/search.cgi/misc/movies.mdb?sgi";
-	// char uri[] = "http://localhost:8080/examples/www/cgi/HelloWorld/hello+there/fred";
+	// NOTE: keep these uris as tests for parsing and move them to a python test later
+	// char uri1[] = "http://yourserver/www/cgi/search.cgi/misc/movies.mdb?sgi";
+	// char uri2[] = "http://localhost:8080/examples/www/cgi/HelloWorld/hello+there/fred";
 	char uri_copy[MAXLINE] = "";
 	char *path_info;
 	char *script_name = NULL;
@@ -360,10 +338,7 @@ new_cgi_client(int sock)
 	return nc;
 }
 
-
-/**************** BEGIN UTILITY FUNCTIONS ***************/
-/* error messages stolen from: http://linux.die.net/man/2/execve
- * This function was implemented by the course TAs and is provided to us
+/* error messages taken from: http://linux.die.net/man/2/execve
  * */
 void execve_error_handler()
 {
@@ -444,38 +419,37 @@ processes.\n");
 		return;
 	}
 }
-/**************** END UTILITY FUNCTIONS ***************/
-
 
 int cgi_child_process_creator(client *c, char *message_body,
 		int content_length, cgi_client *cgi_client_struct)
 {
 
-	/*************** BEGIN FORK **************/
+	// ********* START FORK
+
 	cgi_client_struct->child_pid = fork();
-	/* not good */
+	/* fork failed */
 	if (cgi_client_struct->child_pid < 0)
 	{
-		log_into_file("Something really bad happened when fork()ing.\n");
+		log_into_file("fork() failed\n");
 		LL_DELETE(cgi_client_list, cgi_client_struct);
 		return -1;
 	}
 
-	/* child, setup environment, execve */
+	/* in child process, so setup environment and execve cgi */
 	if (cgi_client_struct->child_pid == 0)
 	{
-		/*************** BEGIN EXECVE ****************/
+		//*************** START EXECVE
+
 		close(cgi_client_struct->pipe_child2parent[READ_END]);
 		close(cgi_client_struct->pipe_parent2child[WRITE_END]);
 		dup2(cgi_client_struct->pipe_child2parent[WRITE_END], fileno(stdout));
 		dup2(cgi_client_struct->pipe_parent2child[READ_END], fileno(stdin));
-		/* probably do something with stderr */
 
 		char script_name[MAX_FILENAME_LEN];
 		memset(script_name, 0, MAX_FILENAME_LEN);
 		char *script_name_env_ptr = getenv("SCRIPT_NAME");
 		strcpy(script_name, script_name_env_ptr);
-		//		fprintf(stderr, "in child script name from env %s\n", script_name);
+		//	fprintf(stderr, "in child script name from env %s\n", script_name);
 		if (script_name == NULL)
 		{
 			log_into_file( "Script name setting failed from env");
@@ -505,21 +479,22 @@ int cgi_child_process_creator(client *c, char *message_body,
 		}
 		char* argv_child[] = {filename,NULL};
 
-		/* pretty much no matter what, if it returns bad things happened... */
 		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 		sprintf(debug_output,"RUNNING file %s", filename);
 		log_into_file(debug_output);
+
 		if (execve(filename, argv_child, environ))
 		{
 			execve_error_handler();
-			log_into_file("Error executing execve syscall.\n");
+			log_into_file("Error while executing the execve system call.\n");
 			log_into_file(script_name_env_ptr);
 			return -1;
 		}
-		/*************** END EXECVE ****************/
+		//*************** END EXECVE
 	}
 
-	// parent
+	// in parent process, so manage file descriptors for writing to child
+	// and receiving child response
 	if (cgi_client_struct->child_pid > 0)
 	{
 		close(cgi_client_struct->pipe_child2parent[WRITE_END]);
@@ -534,16 +509,16 @@ int cgi_child_process_creator(client *c, char *message_body,
 			return -1;
 		}
 
-		/* finished writing to spawn */
+		/* finished writing to spawned child */
 		close(cgi_client_struct->pipe_parent2child[WRITE_END]);
 
-		// return success so the child read fd
+		// return success
 		return 0;
 
 	}
-	/*************** END FORK **************/
+	// ********* END FORK
 
-	fprintf(stderr, "Process exiting badly, check fork branch in handle_cgi\n");
+	fprintf(stderr, "Process exiting badly,check fork branch in handle_cgi\n");
 	return -1;
 }
 
@@ -553,7 +528,7 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 
 	char buf[MAX_LEN];
 	int readret, status;
-	// flag to check if read is the first from child or not
+	// flag to check if we are reading for the first time from child or not
 	char read_start = 1;
 	char response[] = "HTTP/1.1 200 OK\r\n";
 
@@ -562,26 +537,12 @@ void transfer_response_from_cgi_to_client(cgi_client *temp_cgi, client_pool *p)
 	{
 		if (read_start == 1) // 1st read from child valid, respond with 200
 		{
-			if (c->ssl_connection == 0)
-			{
-				write(temp_cgi->client_sock, response, strlen(response));
-			}
-			else
-			{
-				write_to_ssl_client(c, response, strlen(response));
-			}
+			write(temp_cgi->client_sock, response, strlen(response));
 			read_start = 0;
 		}
 		buf[readret] = '\0'; /* nul-terminate string */
 		//				fprintf(stdout, "Got from CGI: %s\n", buf);
-		if (c->ssl_connection == 0)
-		{
-			write(temp_cgi->client_sock, buf, strlen(buf));
-		}
-		else
-		{
-			write_to_ssl_client(c, buf, strlen(buf));
-		}
+		write(temp_cgi->client_sock, buf, strlen(buf));
 	}
 	//	printf("CGI readert finished with %d.\n", readret);
 

@@ -1,15 +1,14 @@
 /*
  ============================================================================
- Name        : Project 1 : HTTP Liso Web Server
+ Name        : HTTP Web Server
  Author      : Fahad Islam
- Description : Implementation of Project 1
+ Copyright (c) <2013> <Fahad Islam>
  ============================================================================
  */
 
-#include "lisod.h"
+#include "main.h"
 #include "client_pool.h"
 #include "handler.h"
-#include "ssl_handler.h"
 #include "cgi_handler.h"
 
 char *hostname;
@@ -17,8 +16,8 @@ char *hostname;
 // server setup auxiliary functions
 void init_from_command_line(int argc, char **argv);
 void web_server();
-void handle_input(client *c, client_pool *p);
-void server_loop(int http_sock, int https_sock, client_pool *p);
+void handle_input(client *clnt, client_pool *clnt_pool);
+void server_loop(int http_sock, client_pool *clnt_pool);
 
 // client managing functions
 void accept_client(int sock, client_pool *p);
@@ -26,15 +25,14 @@ void disconnect_client(client *c, client_pool *p);
 void timeout_client(client *c, client_pool *p);
 
 // Other utility functions
-int daemonize(char* lock_file);
 void clear_bad_fd(client_pool *p);
 
 /*
- * Prints the command line format of the lisod program and exits immediately
+ * Prints the command line format of the program and exits immediately
  */
 void usage() {
-	fprintf(stderr, "usage: ./lisod <HTTP port> <HTTPS port> <log file> <lock file> "
-			"<www folder> <CGI folder or script name> <private key file> <certificate file>\n");
+	fprintf(stderr, "usage: ./server <HTTP port> <log file> "
+			"<www folder> <CGI folder or script name>\n");
 	exit(EXIT_FAILURE);
 }
 
@@ -44,32 +42,25 @@ void usage() {
 void init_from_command_line(int argc, char **argv)
 {
 	cla.http_port = atoi(argv[1]);
-	cla.https_port= atoi(argv[2]);
-	strcpy(cla.log_file, argv[3]);
-	strcpy(cla.lock_file, argv[4]);
-	strcpy(cla.www_folder, argv[5]);
+	strcpy(cla.log_file, argv[2]);
+	strcpy(cla.www_folder, argv[3]);
 
-	//	strcpy(cla.cgi_script, argv[6]);
 	struct stat cgi_stat;
-	stat(argv[6], &cgi_stat);
+	stat(argv[4], &cgi_stat);
 	if (S_ISDIR(cgi_stat.st_mode)) // we have a cgi directory
 	{
-		strcpy(cla.cgi_folder, argv[6]);
+		strcpy(cla.cgi_folder, argv[4]);
 		memset(cla.cgi_script, 0, MAX_FILENAME_LEN);
 	}
 	else // we have a cgi script that handles all cgi requests
 	{
-		strcpy(cla.cgi_script, argv[6]);
+		strcpy(cla.cgi_script, argv[4]);
 		memset(cla.cgi_folder, 0, MAX_FILENAME_LEN);
 	}
 	memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 	sprintf(debug_output,"cla folder:%s cla script:%s\n",
 			cla.cgi_folder, cla.cgi_script);
 	log_into_file(debug_output);
-
-
-	strcpy(cla.private_key_file, argv[7]);
-	strcpy(cla.certificate_file, argv[8]);
 
 	FILE *fp;
 	fp = fopen(cla.log_file,"w"); // write mode
@@ -82,22 +73,18 @@ void init_from_command_line(int argc, char **argv)
 	tm_date = localtime( &rawtime );
 	memset(time_str,0,256);
 	strftime(time_str,256,"%a, %e %b %Y %H:%M:%S", tm_date);
-	fprintf(fp, "Log file for Lisod Server started on %s\r\n", time_str);
+	fprintf(fp, "Log file for HTTP Server started on %s\r\n", time_str);
 	fclose(fp);
 }
 
 
 int main( int argc, char *argv[] )
 {
-	if (argc < 8) usage();
+	if (argc != 5) usage();
 
 	// initialise global vars
 	init_from_command_line(argc, argv);
-	init_ssl(cla.private_key_file, cla.certificate_file);
 	cgi_client_list = NULL;
-
-	// First daemonize the server process
-	daemonize(cla.lock_file);
 
 	web_server();
 	return 0;
@@ -159,22 +146,21 @@ init_hostname() {
 
 void
 web_server() {
-	int listen_http_socket, listen_https_socket;
+	int listen_http_socket;
 	client_pool *p = client_pool_create();
 	listen_http_socket = init_socket(cla.http_port);
-	listen_https_socket = init_ssl_listen_socket(cla.https_port);
 	init_hostname();
-	server_loop(listen_http_socket, listen_https_socket, p);
+	server_loop(listen_http_socket, p);
 }
 
 void
-server_loop(int http_sock, int https_sock,client_pool *p)
+server_loop(int http_sock, client_pool *clnt_pool)
 {
 	fd_set readfds;
 	fd_set writefds;
 	struct timeval timeout;
 	int i, maxfd, rc, wait_status;
-	client *c;
+	client *clnt;
 	cgi_client *cgi_itr;
 	signal(SIGPIPE, SIG_IGN);
 
@@ -187,13 +173,12 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 		FD_ZERO(&writefds);
 
 		FD_SET(http_sock, &readfds);
-		FD_SET(https_sock, &readfds);
-		maxfd = (http_sock > https_sock) ? http_sock : https_sock;
+		maxfd = http_sock;
 
 		for (i = 0; i < MAX_CLIENTS; i++)
 		{
 			client *c;
-			c = p->clients[i];
+			c = clnt_pool->clients[i];
 			if (c == NULL)
 				continue;
 
@@ -201,7 +186,7 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 			if (c->sock > maxfd) maxfd = c->sock;
 		}
 
-		// SET FDS FOR EXECED CGI CHILDREN
+		// Set file descriptors for the CGI child processes
 		i = 0;
 		LL_FOREACH(cgi_client_list, cgi_itr)
 		{
@@ -234,34 +219,29 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 		{
 			for (i = 0; i < MAX_CLIENTS; i++)
 			{
-
-				c = p->clients[i];
-				if (c == NULL)
+				clnt = clnt_pool->clients[i];
+				if (clnt == NULL)
+				{
 					continue;
-
-				timeout_client(c, p);
+				}
+				timeout_client(clnt, clnt_pool);
 			}
 		}
 
 		if (FD_ISSET(http_sock, &readfds))
 		{
-			accept_client(http_sock, p);
-		}
-
-		if (FD_ISSET(https_sock, &readfds))
-		{
-			accept_ssl_client(https_sock, p);
+			accept_client(http_sock, clnt_pool);
 		}
 
 		for (i = 0; i < MAX_CLIENTS; i++)
 		{
-
-			c = p->clients[i];
-			if (c == NULL)
+			clnt = clnt_pool->clients[i];
+			if (clnt == NULL)
+			{
 				continue;
-
-			if (FD_ISSET(c->sock, &readfds))
-				handle_input(c, p);
+			}
+			if (FD_ISSET(clnt->sock, &readfds))
+				handle_input(clnt, clnt_pool);
 		}
 
 		// send response from cgi child to the client
@@ -269,20 +249,15 @@ server_loop(int http_sock, int https_sock,client_pool *p)
 		{
 			if (FD_ISSET(cgi_itr->pipe_child2parent[READ_END], &readfds))
 			{
-				transfer_response_from_cgi_to_client(cgi_itr, p);
+				transfer_response_from_cgi_to_client(cgi_itr, clnt_pool);
 			}
-
 		}
 
 		// wait on any defunct cgi children not captured by other waits
 		waitpid(-1, &wait_status, WNOHANG);
-
 	}
 }
 
-/* Nit-picky note:  the gethostbyaddr function is technically a blocking
- * function.  The grading scripts will accept this;  most async
- * DNS lookup routines are a bit painful in C. */
 void
 set_hostname(client *c)
 {
@@ -300,19 +275,19 @@ set_hostname(client *c)
 
 void accept_client(int sock, client_pool *p)
 {
-	int clisock;
+	int clnt_sock;
 	struct sockaddr_in cliaddr;
 	socklen_t addrlen = sizeof(struct sockaddr_in);
-	client *c;
+	client *clnt;
 
-	clisock = accept(sock, (struct sockaddr *)&cliaddr, &addrlen);
-	if (clisock == -1) {
+	clnt_sock = accept(sock, (struct sockaddr *)&cliaddr, &addrlen);
+	if (clnt_sock == -1) {
 		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 		sprintf(debug_output,"client accept failed from the http port");
 		log_into_file(debug_output);
 		return;
 	}
-	if (fcntl(clisock, F_SETFL, O_NONBLOCK) == -1) {
+	if (fcntl(clnt_sock, F_SETFL, O_NONBLOCK) == -1) {
 		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 		sprintf(debug_output,"could not set client socket to "
 				"non-blocking for client %s",
@@ -322,10 +297,9 @@ void accept_client(int sock, client_pool *p)
 		return;
 	}
 
-	c = new_client(p, clisock);
-	c->cliaddr = cliaddr;
-	c->ssl_connection = 0;
-	set_hostname(c);
+	clnt = new_client(p, clnt_sock);
+	clnt->cliaddr = cliaddr;
+	set_hostname(clnt);
 }
 
 void disconnect_client(client *c, client_pool *p)
@@ -333,13 +307,11 @@ void disconnect_client(client *c, client_pool *p)
 	//only disconnect if client sent a connection close request in http
 	if (c->close_connection == DONT_CLOSE_CONN)
 		return;
-	if (c->ssl_connection == 1)
-		delete_client_from_ssl_list(c->sock);
 	close(c->sock);
 	delete_client(p, c->sock);
 }
 
-void handle_input(client *c, client_pool *p)
+void handle_input(client *clnt, client_pool *clnt_pool)
 {
 	const char* req_ver = "HTTP/1.1";
 	const char* method_GET = "GET";
@@ -358,96 +330,85 @@ void handle_input(client *c, client_pool *p)
 	memset(uri, 0, MAXLINE);
 	memset(version, 0, 12);
 
-	// put in call for ssl read function to transfer data to inbuf
-	if (c->ssl_connection == 1)
-	{
-		nread = read_from_ssl_client(c, inbufptr, sizeof(inbuf)-1);
-		//printf("out of ssl read in handle input: %sEND length = %d\n",
-		// inbufptr, nread);
-	}
-	else
-	{
-		nread = read(c->sock, inbuf, sizeof(inbuf)-1);
-		inbufptr = inbuf;
-		//printf("out of basic read in handle input: %sEND length = %d\n",
-		//inbufptr, nread );
-	}
+
+	nread = read(clnt->sock, inbuf, sizeof(inbuf)-1);
+	inbufptr = inbuf;
+
+	// debug output to read received request from client
+	//printf("out of basic read in handle input: %sEND length = %d\n",
+	//inbufptr, nread );
+
 
 	if (nread == 0)
 	{
 		// log which client is being disconnected
 		char remote_addr[20] = "";
-		char *client_ip = inet_ntoa(c->cliaddr.sin_addr);
+		char *client_ip = inet_ntoa(clnt->cliaddr.sin_addr);
 		strcat(remote_addr, client_ip);
-		//printf("nread 0 disconnecting client ");
 		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 		sprintf(debug_output,"read 0 bytes, disconnecting client %s\n",
 				client_ip);
 		log_into_file(debug_output);
 
-		c->close_connection = CLOSE_CONN;
-		disconnect_client(c, p);
+		clnt->close_connection = CLOSE_CONN;
+		disconnect_client(clnt, clnt_pool);
 		return;
 	}
 	if (nread == -1)
 	{
-		http_error( c, "Error from reading client socket", "500",
+		http_error( clnt, "Error from reading client socket", "500",
 				"Internal Server Error",
 				"An internal server error has occurred ",
 				CLOSE_CONN, SEND_HTTP_BODY);
-		disconnect_client(c, p);
+		disconnect_client(clnt, clnt_pool);
 		return;
 	}
 
 	// received client request, so reset its timeout counter
-	c->timeout_count = 0;
+	clnt->timeout_count = 0;
 
 	// check if we receive a broken/malformed request
 	if (strstr(inbuf,"\r\n") == NULL)
 	{
-		http_error( c, "Client has been disconnected from server", "400",
+		http_error( clnt, "Client has been disconnected from server", "400",
 				"Bad Request",
 				"broken HTTP request received", CLOSE_CONN, SEND_HTTP_BODY);
-		disconnect_client(c, p);
+		disconnect_client(clnt, clnt_pool);
 		return;
 
 	}
-	////////////////////////////////////    ECHO CODE FOR CHECKPOINT 1
-	// write( c->sock, inbuf, nread);
-	// return;
-	////////////////////////////////////    END ECHO CODE FOR CHECKPOINT 1
 
 	// make a copy of the request into the buffer of the client
 	// using strncat instead of strncpy because strncat handles lack of null
 	// characters gracefully and so, i dont need to worry about edge cases
 	//	printf("client existing inbuf : %s\n",c->inbuf);
 	inbufptr = inbuf;
-	strncat(c->inbuf, inbufptr, nread);
-	c->inbuf_size = nread;
+	strncat(clnt->inbuf, inbufptr, nread);
+	clnt->inbuf_size = nread;
 
 	// if the previous request was incomplete, then the client struct already
 	// knows, so i directly jump into the function that handles the incomplete
 	// request
-	switch(c->request_incomplete)
+	switch(clnt->request_incomplete)
 	{
-	case 1: close_connection = handle_GET(c, uri, cla.www_folder);
+	case 1: close_connection = handle_GET(clnt, uri, cla.www_folder);
 	if (close_connection == 1)
-		disconnect_client(c,p);
+		disconnect_client(clnt,clnt_pool);
 	return;
 	break;
-	case 2: close_connection = handle_HEAD(c, uri, cla.www_folder);
+	case 2: close_connection = handle_HEAD(clnt, uri, cla.www_folder);
 	if (close_connection == 1)
-		disconnect_client(c,p);
+		disconnect_client(clnt,clnt_pool);
 	return;
 	break;
-	case 3: close_connection = handle_POST(c, uri, cla.www_folder);
+	case 3: close_connection = handle_POST(clnt, uri, cla.www_folder);
 	if (close_connection == 1)
-		disconnect_client(c,p);
+		disconnect_client(clnt,clnt_pool);
 	return;
 	break;
-	case 4:close_connection = handle_cgi_request(c, uri);
+	case 4:close_connection = handle_cgi_request(clnt, uri);
 	if (close_connection == 1)
-		disconnect_client(c,p);
+		disconnect_client(clnt,clnt_pool);
 	return;
 	default: break;
 	}
@@ -461,33 +422,32 @@ void handle_input(client *c, client_pool *p)
 
 	num_matches = sscanf(request_line, "%s %s %s", method, uri, version);
 
+	// debug output for checking first line of the http header
 	//	memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
 	//	sprintf(debug_output,"method %s uri %s version %s \n",
 	//			method, uri, version);
 	//	log_into_file(debug_output);
 
-
 	// check to see if we actually received a proper http request line
 	if (num_matches != 3)
 	{
-		http_error( c, "Client has been disconnected from server", "400",
+		http_error( clnt, "Client has been disconnected from server", "400",
 				"Bad Request",
 				"broken HTTP request received", CLOSE_CONN, SEND_HTTP_BODY);
-		disconnect_client(c, p);
+		disconnect_client(clnt, clnt_pool);
 		return;
 	}
 
 	/******************************* CGI BRANCH ******************************/
 	if (strstr(uri, "/cgi/"))
 	{
-		close_connection = handle_cgi_request(c, uri);
+		close_connection = handle_cgi_request(clnt, uri);
 		if (close_connection == 1)
 		{
-			disconnect_client(c,p);
+			disconnect_client(clnt,clnt_pool);
 		}
 		return;
 	}
-
 
 
 	// first check for HEAD request since it affects how our error response
@@ -497,46 +457,46 @@ void handle_input(client *c, client_pool *p)
 		// check whether proper HTTP version is supported or not
 		if (strcmp(version, req_ver) != 0)
 		{
-			http_error(c, version, "505", "HTTP Version Not Supported",
+			http_error(clnt, version, "505", "HTTP Version Not Supported",
 					"This server accepts HTTP requests of the following version only",
 					CLOSE_CONN, DONT_SEND_HTTP_BODY);
-			disconnect_client(c, p);
+			disconnect_client(clnt, clnt_pool);
 			return;
 		}
 		else
 		{
-			close_connection = handle_HEAD(c, uri, cla.www_folder);
+			close_connection = handle_HEAD(clnt, uri, cla.www_folder);
 		}
 	}
 	// non-HEAD requests require an HTML entity if error occurs
 	// check whether proper HTTP version is supported or not while sending HTML entity
 	else if (strcmp(version, req_ver) != 0)
 	{
-		http_error(c, version, "505", "HTTP Version Not Supported",
+		http_error(clnt, version, "505", "HTTP Version Not Supported",
 				"This server accepts HTTP requests of the following version only",
 				CLOSE_CONN, SEND_HTTP_BODY);
-		disconnect_client(c, p);
+		disconnect_client(clnt, clnt_pool);
 		return;
 	}
 	// check if a supported method is asked for in the HTTP request
 	else if (strcmp(method, method_GET) == 0)
 	{
-		close_connection = handle_GET(c, uri, cla.www_folder);
+		close_connection = handle_GET(clnt, uri, cla.www_folder);
 	}
 	else if (strcmp(method, method_POST) == 0)
 	{
-		close_connection = handle_POST(c, uri, cla.www_folder);
+		close_connection = handle_POST(clnt, uri, cla.www_folder);
 	}
 	else
 	{
-		http_error(c, method, "501", "Not Implemented",
+		http_error(clnt, method, "501", "Not Implemented",
 				"This server only handles GET,HEAD and POST requests. "
 				"This method is unimplemented", DONT_CLOSE_CONN, SEND_HTTP_BODY);
 		return;
 	}
 	if (close_connection == CLOSE_CONN)
 	{
-		disconnect_client(c,p);
+		disconnect_client(clnt,clnt_pool);
 	}
 }
 
@@ -570,96 +530,6 @@ void log_into_file(char *message)
 	fprintf(fp, "%s %s\n", time_str, message);
 
 	fclose(fp);
-}
-
-
-/***** Utility Functions for daemonizing a process below *****/
-
-/**
- * internal signal handler
- */
-void signal_handler(int sig)
-{
-	switch(sig)
-	{
-	case SIGHUP:
-		/* rehash the server */
-		break;
-	case SIGKILL:
-		printf("got sigkill\n");
-		exit(0);
-		break;
-	case SIGTERM:
-		/* finalize and shutdown the server */
-		// TODO: liso_shutdown(NULL, EXIT_SUCCESS);
-		printf("got sigterm\n");
-		exit(0);
-		break;
-	default:
-		break;
-		/* unhandled signal */
-	}
-}
-
-/**
- * internal function daemonizing the process
- */
-int daemonize(char* lock_file)
-{
-	/* drop to having init() as parent */
-	int i, lfp, pid = fork();
-	char str[256] = {0};
-	if (pid < 0) exit(EXIT_FAILURE);
-	if (pid > 0) exit(EXIT_SUCCESS);
-
-	setsid();
-
-	for (i = getdtablesize(); i>=0; i--)
-		close(i);
-
-	i = open("/dev/null", O_RDWR);
-	dup(i); /* stdout */
-	dup(i); /* stderr */
-	umask(027);
-
-	lfp = open(lock_file, O_RDWR|O_CREAT|O_EXCL, 0640);
-
-	if (lfp < 0)
-	{
-		lfp = open(lock_file, O_RDWR|O_CREAT, 0640);
-
-		if (lfp < 0)
-		{
-			memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
-			sprintf(debug_output,"Could not open lock file for lisod daemon");
-			log_into_file(debug_output);
-			exit(EXIT_FAILURE); /* can not open */
-		}
-	}
-
-	if (lockf(lfp, F_TLOCK, 0) < 0)
-	{
-		memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
-		sprintf(debug_output,"Could not lock file for lisod daemon");
-		log_into_file(debug_output);
-		exit(EXIT_SUCCESS); /* can not lock */
-	}
-
-	/* only first instance continues */
-	sprintf(str, "%d\n", getpid());
-	write(lfp, str, strlen(str)); /* record pid to lockfile */
-
-	signal(SIGCHLD, SIG_IGN); /* child terminate signal */
-
-	signal(SIGHUP, signal_handler); /* hangup signal */
-	signal(SIGTERM, signal_handler); /* software termination signal from kill */
-
-	// log into file --> "Successfully daemonized lisod process, pid %d."
-	memset(debug_output, 0, MAX_DEBUG_MSG_LEN);
-	sprintf(debug_output,"Successfully daemonized lisod process, pid %d.", pid);
-	log_into_file(debug_output);
-
-	return EXIT_SUCCESS;
 }
 
 /* Search for bad file descriptor and remove it from memory along with its

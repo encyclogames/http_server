@@ -1,16 +1,16 @@
 /*
  * client_pool.h
  *
- *      Author: Fahad Islam
+ *      Copyright (c) <2013> <Fahad Islam>
  */
 #ifndef _CLIENT_POOL_H_
 #define _CLIENT_POOL_H_
 
-#include "lisod.h"
+#include "main.h"
 
 typedef struct {
-    client **clients;
-    int num_clients;
+	client **clients;
+	int num_clients;
 } client_pool;
 
 client_pool *client_pool_create();

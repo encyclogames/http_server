@@ -1,3 +1,8 @@
+/*
+ * client_pool.c
+ *
+ *      Copyright (c) <2013> <Fahad Islam>
+ */
 #include "client_pool.h"
 
 client *
@@ -12,7 +17,6 @@ new_client(client_pool *p, int sock)
 	nc->inbuf_size = 0;
 	nc->request_incomplete = 0;
 	nc->close_connection = CLOSE_CONN;
-	nc->ssl_connection = 0;
 	nc->timeout_count = 0;
 
 	p->clients[sock] = nc;

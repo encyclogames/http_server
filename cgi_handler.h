@@ -1,15 +1,15 @@
 /*
  * cgi_handler.h
  *
- *      Author: Fahad Islam
+ *      Copyright (c) <2013> <Fahad Islam>
  */
 
 #ifndef CGI_HANDLER_H_
 #define CGI_HANDLER_H_
 
-#include "lisod.h"
+#include "main.h"
 #include "handler.h"
-#include "ssl_handler.h"
+#include "client_pool.h"
 
 // auxiliary values to help indicate the pipe end being read
 #define READ_END 0
@@ -22,9 +22,9 @@
 typedef struct cgi_client_s{
 	pid_t child_pid;		// pid of the execed child process
 	int client_sock;		// the client socket that expects the response
-    int pipe_parent2child[2]; 	// child_stdin pipe
-    int pipe_child2parent[2];	// child_stdout pipe
-    struct cgi_client_s *next;
+	int pipe_parent2child[2]; 	// child_stdin pipe
+	int pipe_child2parent[2];	// child_stdout pipe
+	struct cgi_client_s *next;
 } cgi_client;
 
 cgi_client* cgi_client_list;
